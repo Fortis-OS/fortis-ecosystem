@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="FortisEncrypt Desktop UI" />
+    <title>FortisEncrypt</title>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="dark-theme">
+      
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="logo">
+            <i class="fa-solid fa-shield-halved"></i>
+            <span>FortisEncrypt</span>
+          </div>
+        </div>
+        
+        <nav class="sidebar-nav">
+          <div class="nav-group">
+            <span class="nav-label">Vault</span>
+            <a href="#" class="nav-item active" data-filter="all"><i class="fa-solid fa-layer-group"></i> All Items</a>
+            <a href="#" class="nav-item" data-filter="Login"><i class="fa-solid fa-key"></i> Passwords</a>
+            <a href="#" class="nav-item" data-filter="CreditCard"><i class="fa-solid fa-credit-card"></i> Payment Cards</a>
+            <a href="#" class="nav-item" data-filter="SecureNote"><i class="fa-solid fa-file-shield"></i> Secure Notes</a>
+          </div>
+          <div class="nav-group">
+            <span class="nav-label">Tools</span>
+            <a href="#" class="nav-item" data-tool="totp"><i class="fa-solid fa-clock-rotate-left"></i> Authenticator (TOTP)</a>
+            <a href="#" class="nav-item" data-tool="gen"><i class="fa-solid fa-wand-magic-sparkles"></i> Generator</a>
+          </div>
+        </nav>
+        
+        <div class="sidebar-footer">
+          <button class="settings-btn"><i class="fa-solid fa-gear"></i> Settings</button>
+          <div class="sync-status online"><i class="fa-solid fa-cloud"></i> Synced</div>
+        </div>
+      </aside>
+
+      <!-- Main Workspace -->
+      <main class="workspace">
+        
+        <!-- Top Navigation Bar -->
+        <header class="topbar glass-panel">
+          <div class="search-container">
+            <i class="fa-solid fa-magnifying-glass search-icon"></i>
+            <input type="text" id="search-input" placeholder="Search vault..." autocomplete="off" />
+          </div>
+          
+          <div class="topbar-actions">
+            <button class="icon-btn"><i class="fa-regular fa-bell"></i></button>
+            <div class="user-avatar">
+              <img src="https://ui-avatars.com/api/?name=User&background=6c5ce7&color=fff" alt="User" />
+            </div>
+          </div>
+        </header>
+
+        <!-- Content Area -->
+        <div class="content-scroll-area">
+          <div class="content-header">
+            <h2>All Items</h2>
+            <button class="btn-primary" id="add-btn">
+              <i class="fa-solid fa-plus"></i> New Item
+            </button>
+          </div>
+          
+          <div class="items-grid" id="items-grid">
+            <!-- Dynamic Vault Items will be injected here by TS -->
+          </div>
+        </div>
+
+      </main>
+
+    </div>
+    <!-- Add Item Modal -->
+    <div id="add-modal" class="modal-overlay hidden">
+      <div class="modal-content glass-panel">
+        <div class="modal-header">
+          <h3>Add New Item</h3>
+          <button id="close-modal-btn" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+          <form id="add-item-form">
+            <div class="form-group">
+              <label for="item-type">Type</label>
+              <select id="item-type" class="form-control">
+                <option value="Login">Login / Password</option>
+                <option value="CreditCard">Credit Card</option>
+                <option value="SecureNote">Secure Note</option>
+                <option value="Authenticator">Authenticator (TOTP)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="item-title">Title</label>
+              <input type="text" id="item-title" class="form-control" placeholder="e.g. GitHub Account" required />
+            </div>
+            
+            <!-- Dynamic Fields -->
+            <div id="dynamic-fields-login" class="dynamic-fields">
+              <div class="form-group">
+                <label for="item-username">Username</label>
+                <input type="text" id="item-username" class="form-control" placeholder="Username or Email" />
+              </div>
+              <div class="form-group">
+                <label for="item-password">Password</label>
+                <input type="password" id="item-password" class="form-control" placeholder="Password" />
+              </div>
+            </div>
+
+            <div id="dynamic-fields-card" class="dynamic-fields hidden" style="display: none;">
+              <div class="form-group">
+                <label for="item-card-number">Card Number</label>
+                <input type="text" id="item-card-number" class="form-control" placeholder="0000 0000 0000 0000" />
+              </div>
+            </div>
+
+            <div id="dynamic-fields-totp" class="dynamic-fields hidden" style="display: none;">
+              <div class="form-group">
+                <label for="item-totp-secret">TOTP Secret Key (Base32)</label>
+                <input type="text" id="item-totp-secret" class="form-control" placeholder="JBSWY3DPEHPK3PXP" />
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="item-notes">Notes</label>
+              <textarea id="item-notes" class="form-control" rows="3" placeholder="Optional notes..."></textarea>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn-secondary" id="cancel-add-btn">Cancel</button>
+              <button type="submit" class="btn-primary">Save Item</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
