@@ -1,0 +1,12 @@
+# FortisMobile Configuration
+# Location: ~/.config/fortis-mobile/fortis-mobile.conf
+# IMPORTANT: chmod 600 this file after editing.
+
+# Minimum battery % required before the laptop is allowed to start a backup.
+BATTERY_THRESHOLD=20
+
+# Minimum free storage in GB required.
+STORAGE_THRESHOLD_GB=10
+
+# The port sshd listens on (informational — matches your Termux sshd config).
+SSHD_PORT=8022
