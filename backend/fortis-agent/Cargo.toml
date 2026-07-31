@@ -1,0 +1,22 @@
+[package]
+name = "fortis-agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.9", features = ["multipart"] }
+env_logger = "0.11.11"
+fortis-core = { version = "0.1.0", path = "../fortis-core" }
+fortis-sync = { version = "0.1.0", path = "../fortis-sync" }
+lazy_static = "1.5.0"
+log = "0.4.33"
+rand = "0.8"
+serde = "1.0.229"
+serde_json = "1.0.151"
+tokio = { version = "1.53.1", features = ["full"] }
+tokio-util = { version = "0.7.19", features = ["io"] }
+toml = "1.1.3"
+tonic = "0.11"
+tower-http = { version = "0.7.0", features = ["cors"] }
+uuid = "1.24.0"
+zeroize = "1.9.0"

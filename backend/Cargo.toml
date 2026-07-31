@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "fortis-core",
+    "fortis-sync",
+    "fortis-bindings",
+    "fortis-agent",
+    "fortis-pam"
+]
+resolver = "2"

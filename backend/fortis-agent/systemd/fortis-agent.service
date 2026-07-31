@@ -1,0 +1,16 @@
+[Unit]
+Description=Fortis Agent Unified Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/fortis-agent
+Restart=on-failure
+RestartSec=5s
+Environment="FORTIS_AGENT_KEY=change_me_in_production"
+Environment="RUST_LOG=info"
+User=%i
+Group=%i
+
+[Install]
+WantedBy=default.target
