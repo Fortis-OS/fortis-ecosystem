@@ -1,2 +1,22 @@
-# Ignore personal configuration
-backup.conf
+# Build and dependencies
+/target/
+node_modules/
+dist/
+build/
+.next/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
