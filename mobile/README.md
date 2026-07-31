@@ -81,9 +81,9 @@ fortis-mobile/
 ├── android/
 │   ├── app/
 │   │   └── src/main/
-│   │       ├── java/com/fortis/mobile/
+│   │       ├── java/com/example/fortismobile/
 │   │       │   ├── MainActivity.kt
-│   │       │   ├── screens/
+│   │       │   ├── encrypt/
 │   │       │   │   ├── VaultScreen.kt
 │   │       │   │   ├── AuthenticatorScreen.kt
 │   │       │   │   ├── PasswordGeneratorScreen.kt
@@ -91,7 +91,7 @@ fortis-mobile/
 │   │       │   ├── service/
 │   │       │   │   └── FortisAuthService.kt    # Background gRPC listener
 │   │       │   └── crypto/
-│   │       │       └── FortisKeyManager.kt     # Android Keystore (Ed25519)
+│   │       │       └── FortisKeyManager.kt     # Android Keystore
 │   │       └── res/
 │   └── build.gradle.kts
 ├── docs/
@@ -100,6 +100,6 @@ fortis-mobile/
 
 ## Security
 
-- Private keys are generated and stored exclusively in the **Android Hardware Keystore** — they never leave the secure enclave
+- Private keys are generated and stored exclusively in the **Android Hardware Keystore** — they never leave the secure enclave. (Uses standard Keystore algorithms, typically ECDSA P-256 by default).
 - Biometric verification uses Android's `BiometricPrompt` API with `BIOMETRIC_STRONG` classifier
 - All gRPC communication is encrypted over the Tailscale WireGuard VPN tunnel
