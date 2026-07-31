@@ -1,24 +1,26 @@
 # fortis-core
 
-> The cryptographic heart of the Fortis Ecosystem. This library provides encrypted vault storage, TOTP generation, Ed25519 authentication, and secure password generation.
+> The cryptographic heart of the Fortis Ecosystem. This library provides encrypted vault storage, TOTP generation, Ed25519 authentication, key derivation, and secure password generation.
 
 ## Overview
 
 `fortis-core` is a pure Rust library crate that all other Fortis modules depend on. It handles:
 
-- **Vault Management** — Encrypted CRUD operations for passwords, credit cards, identities, and secure notes
-- **Database** — SQLCipher-encrypted SQLite database with Argon2 key derivation
-- **TOTP** — Time-based One-Time Password generation (RFC 6238)
-- **Ed25519 Authentication** — Key generation, signing, and signature verification for biometric challenges
-- **Password Generation** — Cryptographically secure random password generation
-- **Zeroized Memory** — All secrets are automatically wiped from RAM via the `zeroize` crate
+- **Vault Management** — Data models for passwords, credit cards, identities, and secure notes
+- **Database** — SQLCipher-encrypted SQLite database with full CRUD operations
+- **Key Derivation** — Argon2id master password → 32-byte key derivation
+- **Encryption** — XChaCha20-Poly1305 field-level encryption with zeroized vault keys
+- **TOTP** — Time-based One-Time Password generation (RFC 6238, SHA-1, 6 digits, 30s)
+- **Ed25519 Authentication** — Challenge generation and signature verification for biometric auth
+- **Password Generation** — Cryptographically secure random passwords with configurable rules
+- **Zeroized Memory** — All secrets wrapped in `zeroize::Zeroizing<>` and automatically wiped from RAM on drop
 
 ## Prerequisites
 
 | Requirement | Version |
-|-------------|---------|
-| Rust | 1.80+ |
-| SQLCipher | 4.x (bundled via `rusqlite`) |
+|---|---|
+| Rust | 1.80+ (edition 2024) |
+| SQLCipher | 4.x (bundled via `rusqlite[bundled-sqlcipher-vendored-openssl]`) |
 
 ## Build
 
@@ -78,25 +80,70 @@ for entry in entries {
 ```rust
 use fortis_core::totp;
 
-let code = totp::generate("JBSWY3DPEHPK3PXP")?;
+// Generate a 6-digit TOTP code (SHA-1, 30-second period)
+let code = totp::generate_totp_code("JBSWY3DPEHPK3PXP")?;
 println!("Current OTP: {}", code);
+
+// Get remaining seconds until next code
+let remaining = totp::get_remaining_seconds();
+println!("Expires in: {}s", remaining);
 ```
 
 ### Ed25519 Authentication
 
 ```rust
-use fortis_core::auth;
+use fortis_core::auth::{AuthChallenge, AuthResponse, PairedDevice, verify_response};
 
-// Generate a keypair
-let (public_key, secret_key) = auth::generate_keypair();
+// Generate a challenge (32-byte random nonce + timestamp)
+let challenge = AuthChallenge::new();
 
-// Sign a challenge
-let challenge = b"authenticate_sudo_12345";
-let signature = auth::sign(challenge, &secret_key);
+// The mobile device signs challenge.payload() with its Ed25519 private key
+// and returns the hex-encoded signature
 
-// Verify the signature
-let is_valid = auth::verify(challenge, &signature, &public_key);
-assert!(is_valid);
+// Verify the response
+let response = AuthResponse {
+    signature: "hex_encoded_ed25519_signature".to_string(),
+};
+let device = PairedDevice {
+    public_key: "hex_encoded_ed25519_public_key".to_string(),
+};
+
+let is_valid = verify_response(&challenge, &response, &device);
+```
+
+### Key Derivation (Argon2id)
+
+```rust
+use fortis_core::crypto::{derive_master_key, generate_vault_key, encrypt_entry, decrypt_entry};
+use rand::{rngs::OsRng, RngCore};
+
+// Derive a master key from a passphrase
+let mut salt = [0u8; 16];
+OsRng.fill_bytes(&mut salt);
+let master_key = derive_master_key("my_passphrase", &salt)?;
+
+// Generate a random vault key
+let vault_key = generate_vault_key();
+
+// Encrypt/decrypt data
+let ciphertext = encrypt_entry(&vault_key, b"secret data")?;
+let plaintext = decrypt_entry(&vault_key, &ciphertext)?;
+```
+
+### Password Generation
+
+```rust
+use fortis_core::password_gen::PasswordGenerator;
+
+let generator = PasswordGenerator {
+    length: 24,
+    include_uppercase: true,
+    include_numbers: true,
+    include_symbols: true,
+};
+
+let password = generator.generate(); // Returns Zeroizing<String>
+println!("Generated: {}", *password);
 ```
 
 ## Data Models
@@ -118,10 +165,45 @@ pub struct VaultEntry {
 
 ```rust
 pub enum EntryType {
-    Login { username, password, url, totp_secret },
-    Identity { first_name, last_name, email, phone, address },
-    CreditCard { cardholder_name, card_number, expiration_month, expiration_year, cvv },
-    SecureNote { content },
+    Login {
+        username: String,
+        password: SecretString,
+        url: Option<String>,
+        totp_secret: Option<String>,
+    },
+    Identity {
+        first_name: String,
+        last_name: String,
+        email: String,
+        phone: String,
+        address: String,
+    },
+    CreditCard {
+        cardholder_name: String,
+        card_number: SecretString,
+        expiration_month: String,
+        expiration_year: String,
+        cvv: SecretString,
+    },
+    SecureNote {
+        content: SecretString,
+    },
+}
+```
+
+### CustomField
+
+```rust
+pub struct CustomField {
+    pub name: String,
+    pub value: SecretString,
+    pub field_type: FieldType,
+}
+
+pub enum FieldType {
+    Text,
+    Hidden,
+    Boolean,
 }
 ```
 
@@ -133,21 +215,23 @@ fortis-core/
 └── src/
     ├── lib.rs               # Module exports
     ├── vault/
-    │   └── mod.rs           # Vault data models (VaultEntry, EntryType, SecretString)
+    │   └── mod.rs           # Vault data models (VaultEntry, EntryType, SecretString, CustomField)
     ├── db/
-    │   └── mod.rs           # SQLCipher database operations
+    │   └── mod.rs           # SQLCipher database operations (open, init_schema, add/get entries)
     ├── auth/
-    │   └── mod.rs           # Ed25519 key generation, signing, verification
+    │   └── mod.rs           # AuthChallenge, AuthResponse, PairedDevice, verify_response()
     ├── crypto/
-    │   └── mod.rs           # ChaCha20-Poly1305 encryption primitives
+    │   └── mod.rs           # Argon2id key derivation, XChaCha20-Poly1305 encrypt/decrypt
     ├── sync/
-    │   └── mod.rs           # Automerge CRDT sync logic
-    ├── totp.rs              # TOTP generation (RFC 6238)
-    └── password_gen.rs      # Secure random password generation
+    │   └── crdt.rs          # SyncEngine — Automerge CRDT wrapper (WIP)
+    ├── totp.rs              # generate_totp_code(), get_remaining_seconds()
+    └── password_gen.rs      # PasswordGenerator struct with configurable rules
 ```
 
 ## Security Notes
 
 - The vault database uses **SQLCipher** with AES-256 encryption and 256,000 KDF iterations
-- All `SecretString` fields are wrapped in `zeroize::Zeroizing<String>` to ensure secrets are zeroed from memory on drop
-- Ed25519 keys are generated using `ed25519-dalek` with a CSPRNG
+- All `SecretString` fields are wrapped in `zeroize::Zeroizing<String>` — secrets are zeroed from memory on drop
+- `MasterKey` and `VaultKey` structs implement `ZeroizeOnDrop`
+- Ed25519 keys use `ed25519-dalek` with `OsRng` (CSPRNG)
+- Challenge payloads are SHA-512 hashed before signing to bind the nonce and timestamp

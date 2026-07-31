@@ -37,6 +37,8 @@ export FORTIS_AGENT_KEY=$(openssl rand -hex 32)
 export RUST_LOG=info
 ```
 
+> **Note:** The agent will also attempt to load `FORTIS_AGENT_KEY` from `~/.config/fortis/env` if the environment variable is not set.
+
 ## Run
 
 ```bash
@@ -49,18 +51,19 @@ FORTIS_AGENT_KEY=my_secret_key RUST_LOG=info ./target/release/fortis-agent
 
 ## Systemd Service
 
-For production deployment, install as a systemd service:
+For production deployment, install as a user-level systemd service:
 
 ```bash
-sudo cp systemd/fortis-agent.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now fortis-agent
+mkdir -p ~/.config/systemd/user/
+cp systemd/fortis-agent.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now fortis-agent
 
 # Check status
-sudo systemctl status fortis-agent
+systemctl --user status fortis-agent
 
 # View logs
-journalctl -u fortis-agent -f
+journalctl --user -u fortis-agent -f
 ```
 
 ## API Endpoints
