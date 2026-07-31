@@ -42,6 +42,8 @@ npm run tauri dev
 npm run tauri build
 ```
 
+> **Important:** The Tauri Rust backend has a path dependency on `fortis-core` at `../../fortis-backend/fortis-core`. Ensure both repositories are cloned side-by-side in the same parent directory before building.
+
 ## Configuration
 
 The desktop app requires `fortis-agent` to be running. Set the environment variable before launching:
@@ -55,9 +57,9 @@ The Tauri Rust backend reads this variable and securely passes it to the fronten
 ## How It Works
 
 1. **Startup** — The frontend calls `invoke("get_api_key")` via Tauri IPC to retrieve the API key from the Rust backend
-2. **Fetch Vault** — Using the key, it calls `GET http://127.0.0.1:8023/api/v1/vault/entries`
+2. **Fetch Vault** — It uses the API key to call `GET http://127.0.0.1:8023/api/v1/vault/entries`. Alternatively, it can call the `get_vault_entries` Tauri command to query the database directly.
 3. **Display** — Entries are rendered in a responsive, glassmorphic card layout
-4. **Add Entry** — The "+" button opens a modal where the user can create passwords, cards, or secure notes via `POST /api/v1/vault/entries`
+4. **Add Entry** — The "+" button opens a modal where the user can create passwords (optionally using the `generate_password` Tauri command), cards, or secure notes via `POST /api/v1/vault/entries`
 
 ## Project Structure
 
