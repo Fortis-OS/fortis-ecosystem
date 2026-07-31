@@ -2,152 +2,210 @@
 
 ## System Architecture
 
-The Fortis Ecosystem follows a **hub-and-spoke architecture** with `fortis-agent` as the central hub and all other components as spokes that communicate through it.
+The Fortis Ecosystem follows a **hub-and-spoke architecture** with `fortis-agent` as the central hub. All client applications communicate through the agent, which manages vault storage, system actions, and biometric authentication.
 
+```mermaid
+graph TD
+    subgraph "Client Layer"
+        LOCK["🔒 fortis-lock<br/>(Chrome Extension)"]
+        DESKTOP["🖥️ fortis-desktop<br/>(Tauri v2)"]
+        MOBILE["📱 fortis-mobile<br/>(Android/Compose)"]
+        CLI["⌨️ fortis-cli<br/>(Terminal)"]
+    end
+
+    subgraph "Agent Layer (fortis-backend)"
+        REST["REST Server<br/>:8023"]
+        IPC["IPC Server<br/>/tmp/fortis_agent.sock"]
+        GRPC["gRPC Server<br/>:50051 (stub)"]
+        MODULES["Module Layer<br/>telemetry | actions | files<br/>vault | backup | auth"]
+    end
+
+    subgraph "Core Layer (fortis-backend)"
+        CORE["fortis-core"]
+        VAULT["vault/"]
+        DB["db/"]
+        CRYPTO["crypto/"]
+        AUTH["auth/"]
+        TOTP["totp"]
+        PASSGEN["password_gen"]
+    end
+
+    subgraph "Integration Layer"
+        PAM["fortis-pam<br/>(PAM Module)"]
+        SYNC["fortis-sync<br/>(gRPC Proto)"]
+        BINDINGS["fortis-bindings<br/>(UniFFI)"]
+    end
+
+    subgraph "Standalone Services"
+        BACKUP["fortis-backup<br/>(Bash/systemd)"]
+        OBSERVE["fortis-observe<br/>(Next.js)"]
+    end
+
+    subgraph "Storage"
+        SQLCIPHER[("~/.local/share/fortis/vault.db<br/>SQLCipher AES-256")]
+        PAIRED[("~/.config/fortis/<br/>paired_devices.json")]
+    end
+
+    LOCK -- "HTTP :8023" --> REST
+    DESKTOP -- "HTTP :8023" --> REST
+    CLI -- "Unix Socket" --> IPC
+    MOBILE -. "gRPC (planned)" .-> GRPC
+    PAM -- "Unix Socket" --> IPC
+
+    REST --> MODULES
+    IPC --> MODULES
+    GRPC --> MODULES
+
+    MODULES --> CORE
+    CORE --> VAULT
+    CORE --> DB
+    CORE --> CRYPTO
+    CORE --> AUTH
+    CORE --> TOTP
+    CORE --> PASSGEN
+
+    MODULES --> SYNC
+    BINDINGS --> CORE
+
+    DB --> SQLCIPHER
+    MODULES --> PAIRED
 ```
-                         ┌──────────────────────┐
-                         │    fortis-mobile      │
-                         │   (Android/Compose)   │
-                         └──────────┬───────────┘
-                                    │ gRPC (:50051)
-                                    │ via Tailscale VPN
-                                    │
-┌──────────────┐   HTTP    ┌────────▼────────────────────────┐   IPC
-│ fortis-lock   │─────────▶│          fortis-agent           │◀──────── fortis-cli
-│ (Chrome Ext)  │ :8023    │                                 │  Unix
-└──────────────┘           │  ┌─────────┬─────────┬────────┐ │  Socket
-                           │  │  REST   │  IPC    │  gRPC  │ │
-┌──────────────┐   HTTP    │  │  Server │ Server  │ Server │ │
-│ fortis-desktop│─────────▶│  └────┬────┴────┬────┴────┬───┘ │
-│ (Tauri App)   │ :8023    │       │         │         │     │
-└──────────────┘           │  ┌────▼─────────▼─────────▼───┐ │
-                           │  │        Module Layer         │ │
-                           │  │ telemetry│actions│files│auth│ │
-                           │  └────────────────┬───────────┘ │
-                           │                   │             │
-                           │  ┌────────────────▼───────────┐ │
-                           │  │        fortis-core          │ │
-                           │  │   vault│db│crypto│auth│totp │ │
-                           │  └────────────────────────────┘ │
-                           └─────────────────────────────────┘
-                                         │
-                              ┌──────────▼──────────┐
-                              │  ~/.local/share/     │
-                              │  fortis/vault.db     │
-                              │  (SQLCipher AES-256) │
-                              └─────────────────────┘
-```
-
-## Component Layers
-
-### Layer 1: Core Library (`fortis-core`)
-
-The foundation. Contains no I/O or networking — pure cryptographic logic and data models.
-
-| Module | Responsibility |
-|--------|---------------|
-| `vault/` | Data models: `VaultEntry`, `EntryType`, `SecretString` |
-| `db/` | SQLCipher database: open, init_schema, add_entry, get_entries |
-| `auth/` | Ed25519 key generation, signing, verification |
-| `crypto/` | ChaCha20-Poly1305 encryption primitives |
-| `totp.rs` | RFC 6238 TOTP code generation |
-| `password_gen.rs` | Secure random password generation |
-
-### Layer 2: Transport Protocol (`fortis-sync`)
-
-Defines the gRPC protocol used between the agent and mobile devices.
-
-| File | Responsibility |
-|------|---------------|
-| `proto/sync.proto` | Protobuf service and message definitions |
-| `build.rs` | Compiles `.proto` to Rust via `tonic-build` |
-| `src/lib.rs` | Re-exports generated client/server stubs |
-
-### Layer 3: Agent Daemon (`fortis-agent`)
-
-The central hub. Runs as a background process and exposes three transport interfaces.
-
-| Transport | Port/Path | Protocol | Clients |
-|-----------|-----------|----------|---------|
-| REST | `:8023` | HTTP/JSON | Desktop, Browser Extension |
-| IPC | `/tmp/fortis_agent.sock` | Unix Socket | CLI |
-| gRPC | `:50051` | Protobuf | Mobile |
-
-### Layer 4: Client Applications
-
-| Client | Platform | Transport | Auth Method |
-|--------|----------|-----------|-------------|
-| `fortis-desktop` | Linux/macOS/Windows | REST (HTTP) | Bearer Token |
-| `fortis-lock` | Chrome | REST (HTTP) | Unauthenticated (localhost only) |
-| `fortis-cli` | Terminal | IPC (Unix Socket) | Process-level (socket permissions) |
-| `fortis-mobile` | Android | gRPC | Ed25519 Signature |
-
-### Layer 5: System Integration
-
-| Component | Role |
-|-----------|------|
-| `fortis-pam` | Plugs into Linux PAM for biometric sudo |
-| `fortis-backup` | Encrypted incremental backups via cron/systemd |
 
 ---
 
-## Data Flow Examples
+## Component Layers
 
-### Adding a Password (Desktop → Agent → Database)
+### Layer 1: Core Library — `fortis-core`
 
+The foundation. Contains no I/O or networking — pure cryptographic logic and data models. Lives in the [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) workspace.
+
+| Module | Responsibility |
+|---|---|
+| `vault/mod.rs` | Data models: `VaultEntry`, `EntryType` (Login, Identity, CreditCard, SecureNote), `SecretString`, `CustomField`, `Vault`, `VaultFolder` |
+| `db/mod.rs` | SQLCipher database: `Database::open()`, `init_schema()`, `add_entry()`, `get_entries()` |
+| `auth/mod.rs` | `AuthChallenge::new()`, `verify_response()`, Ed25519 signature verification |
+| `crypto/mod.rs` | `derive_master_key()` (Argon2id), `generate_vault_key()`, `encrypt_entry()` / `decrypt_entry()` (XChaCha20-Poly1305) |
+| `totp.rs` | `generate_totp_code()` — RFC 6238 TOTP, SHA-1, 6 digits, 30-second period |
+| `password_gen.rs` | `PasswordGenerator` — configurable length, uppercase, numbers, symbols |
+| `sync/crdt.rs` | `SyncEngine` — Automerge CRDT wrapper for conflict-free vault merging (minimal, WIP) |
+
+### Layer 2: Transport Protocol — `fortis-sync`
+
+Defines the gRPC protocol used between the agent and mobile devices. Also in the [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) workspace.
+
+| Component | Responsibility |
+|---|---|
+| `proto/sync.proto` | Protobuf definitions for `SyncService` (vault sync) and `FortisAuth` (biometric relay) |
+| `build.rs` | Compiles `.proto` → Rust via `tonic-build` with vendored `protoc` |
+| `src/server.rs` | `FortisSyncService` — stub implementation of `SyncService` RPCs |
+| `src/client.rs` | `FortisSyncClient` — gRPC client for connecting to peers |
+| `src/discovery.rs` | `PeerDiscovery` — planned Tailscale local API integration (returns hardcoded localhost) |
+
+### Layer 3: Agent Daemon — `fortis-agent`
+
+The central hub. Runs as a background daemon and exposes three transport interfaces. Also in [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend).
+
+| Transport | Port/Path | Protocol | Clients | Status |
+|---|---|---|---|---|
+| REST | `:8023` | HTTP/JSON (Axum) | Desktop, Browser Extension, Mobile | ✅ Active |
+| IPC | `/tmp/fortis_agent.sock` | Unix Domain Socket | CLI, PAM | ✅ Active |
+| gRPC | `:50051` | Protobuf (Tonic) | Mobile | ⚠️ Stub |
+
+**Agent Modules:**
+
+| Module | Purpose |
+|---|---|
+| `telemetry.rs` | Collects CPU, memory, swap, storage, temperature via shell commands |
+| `actions.rs` | Executes system actions: lock, suspend, shutdown, media control, clipboard |
+| `files.rs` | File listing, file drop (upload to `~/Downloads/FortisMobileDrop/`), file download |
+| `vault.rs` | `VaultManager` — wraps `fortis-core::db::Database` with async mutex |
+| `backup.rs` | Reads last 50 lines of backup log from `/mnt/FortisVault/Logs/mirror/mirror.log` |
+| `auth.rs` | Pairing code generation, biometric challenge relay via gRPC client |
+
+### Layer 4: Client Applications
+
+| Client | Repository | Platform | Transport | Auth Method |
+|---|---|---|---|---|
+| [fortis-desktop](https://github.com/Fortis-Ecosystem/fortis-desktop) | Tauri v2 | Linux/macOS/Windows | REST (HTTP) + Direct DB | Bearer Token + env var / `~/.config/fortis/env` |
+| [fortis-lock](https://github.com/Fortis-Ecosystem/fortis-lock) | Chrome Ext | Chrome MV3 | REST (HTTP) | Unauthenticated (public endpoints only) |
+| [fortis-cli](https://github.com/Fortis-Ecosystem/fortis-cli) | Standalone | Terminal | IPC (Unix Socket) | Process-level (socket `0600` permissions) |
+| [fortis-mobile](https://github.com/Fortis-Ecosystem/fortis-mobile) | Android | Kotlin/Compose | gRPC (planned) / REST | Ed25519 Signature |
+
+### Layer 5: System Integration
+
+| Component | Repository | Role |
+|---|---|---|
+| `fortis-pam` | [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) | Linux PAM module: sends `AUTH_CHALLENGE` over IPC socket for biometric sudo |
+| `fortis-bindings` | [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) | UniFFI bindings: exports `get_totp()` and `generate_secure_password()` for mobile |
+| [fortis-backup](https://github.com/Fortis-Ecosystem/fortis-backup) | Standalone | Incremental rsync-based backup with systemd timer |
+
+---
+
+## Data Flow Diagrams
+
+### Adding a Vault Entry (Desktop → Agent → Database)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Desktop as fortis-desktop
+    participant Agent as fortis-agent (REST)
+    participant Core as fortis-core
+    participant DB as vault.db
+
+    User->>Desktop: Click "+" → Fill form → Submit
+    Desktop->>Agent: POST /api/v1/vault/entries<br/>{title, entry_type, username, password}
+    Agent->>Core: Database::open() + db.add_entry(&entry)
+    Core->>DB: INSERT OR REPLACE INTO entries (...)
+    DB-->>Core: Ok(())
+    Core-->>Agent: Ok(())
+    Agent-->>Desktop: 200 { "status": "success" }
 ```
-fortis-desktop                   fortis-agent                     fortis-core
-      │                               │                               │
-      │  POST /vault/entries           │                               │
-      │  { title, username, password } │                               │
-      │──────────────────────────────▶│                               │
-      │                               │  db.add_entry(&entry)         │
-      │                               │──────────────────────────────▶│
-      │                               │                               │  INSERT INTO entries
-      │                               │           Ok(())              │
-      │                               │◀──────────────────────────────│
-      │  200 { "status": "success" }  │                               │
-      │◀──────────────────────────────│                               │
+
+### Biometric Sudo (PAM → Agent → Mobile)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Sudo as sudo
+    participant PAM as fortis-pam
+    participant Agent as fortis-agent (IPC)
+    participant Mobile as fortis-mobile
+
+    User->>Sudo: sudo whoami
+    Sudo->>PAM: pam_sm_authenticate()
+    PAM->>Agent: "AUTH_CHALLENGE" (Unix Socket)
+    Agent->>Mobile: gRPC RequestBiometricAuth (nonce, timestamp)
+    Mobile->>User: Fingerprint prompt
+    User->>Mobile: Scan fingerprint
+    Mobile-->>Agent: BiometricAuthResponse (Ed25519 signature)
+    Agent->>Agent: verify_response(challenge, signature, public_key)
+    Agent-->>PAM: "AUTH_SUCCESS"
+    PAM-->>Sudo: PAM_SUCCESS
+    Sudo-->>User: root shell
 ```
 
-### Biometric Sudo (PAM → Agent → Mobile → Agent → PAM)
+> **Note:** If the gRPC connection to mobile fails, the current development build returns a mock `AUTH_SUCCESS`. In production, it will return `AUTH_FAILURE` and PAM falls back to password authentication (`PamError::IGNORE`).
 
-```
-sudo          fortis-pam       fortis-agent      fortis-mobile
-  │               │                 │                  │
-  │  auth req     │                 │                  │
-  │──────────────▶│                 │                  │
-  │               │ AUTH_CHALLENGE  │                  │
-  │               │────────────────▶│                  │
-  │               │                 │  gRPC challenge  │
-  │               │                 │─────────────────▶│
-  │               │                 │                  │  [fingerprint scan]
-  │               │                 │  gRPC signature  │
-  │               │                 │◀─────────────────│
-  │               │                 │  verify(sig, pk) │
-  │               │  "Success"      │                  │
-  │               │◀────────────────│                  │
-  │  PAM_SUCCESS  │                 │                  │
-  │◀──────────────│                 │                  │
-```
+### Browser Unlock (FortisLock → Agent → Mobile)
 
-### Browser Unlock (FortisLock → Agent → Mobile → Agent → FortisLock)
+```mermaid
+sequenceDiagram
+    participant User
+    participant Lock as fortis-lock (Chrome)
+    participant Agent as fortis-agent (REST)
+    participant Mobile as fortis-mobile
 
-```
-fortis-lock                fortis-agent             fortis-mobile
-      │                         │                        │
-      │  POST /auth/unlock      │                        │
-      │  { domain: "x.com" }    │                        │
-      │────────────────────────▶│                        │
-      │                         │  gRPC biometric push   │
-      │                         │───────────────────────▶│
-      │                         │                        │ [fingerprint]
-      │                         │  gRPC Ed25519 sig      │
-      │                         │◀───────────────────────│
-      │  200 { status: success }│                        │
-      │◀────────────────────────│                        │
-      │                         │                        │
-      │  [redirect to website]  │                        │
+    User->>Lock: Navigate to protected domain
+    Lock->>Lock: Intercept → Show fake DNS error
+    User->>Lock: Click DNS_PROBE_POSSIBLE ×3 → Authenticate
+    Lock->>Agent: POST /api/v1/auth/unlock { domain: "reddit.com" }
+    Agent->>Mobile: gRPC biometric push
+    Mobile->>User: Fingerprint prompt
+    User->>Mobile: Approve
+    Mobile-->>Agent: Ed25519 signature
+    Agent-->>Lock: 200 { status: success }
+    Lock->>Lock: Grant 5-minute session → Redirect to website
 ```
 
 ---
@@ -155,29 +213,37 @@ fortis-lock                fortis-agent             fortis-mobile
 ## Security Boundaries
 
 | Boundary | Protection |
-|----------|-----------|
-| Vault at rest | AES-256 via SQLCipher + Argon2 KDF (256k iterations) |
+|---|---|
+| Vault at rest | AES-256 via SQLCipher + 256,000 KDF iterations |
+| Vault field encryption | XChaCha20-Poly1305 (in `crypto/mod.rs`) |
+| Master key derivation | Argon2id (64 MB memory, 3 passes, 4 lanes) |
 | Vault in memory | `zeroize` crate wipes secrets on drop |
 | REST API | Bearer token authentication |
 | IPC socket | `chmod 0600` — owner-only access |
 | gRPC channel | Tailscale WireGuard VPN encryption |
-| Mobile keys | Android Hardware Keystore (never exported) |
-| Config files | `chmod 0600` on `paired_devices.json` |
-| PAM module | Runs as root, communicates via restricted Unix socket |
+| Mobile keys | Android Hardware Keystore (non-exportable) |
+| Config files | `chmod 0600` on `paired_devices.json` and `backup.conf` |
+| PAM module | Falls back to `IGNORE` (password prompt) on any failure |
+| Backup drive | `chmod 700` enforced on every run |
 
 ---
 
 ## Technology Stack
 
 | Category | Technology |
-|----------|-----------|
-| Core Language | Rust |
-| HTTP Framework | Axum |
-| gRPC | Tonic + Protobuf |
-| Database | SQLCipher (rusqlite) |
+|---|---|
+| Core Language | Rust (edition 2024) |
+| HTTP Framework | Axum 0.8 |
+| Async Runtime | Tokio |
+| gRPC | Tonic 0.11 + Prost 0.12 |
+| Database | SQLCipher 4.x (via `rusqlite` with `bundled-sqlcipher`) |
+| Encryption | XChaCha20-Poly1305, Argon2id, Ed25519 (`ed25519-dalek`) |
+| Sync | Automerge CRDT (WIP) |
 | Desktop | Tauri v2 + Vite + TypeScript |
 | Mobile | Kotlin + Jetpack Compose |
-| Browser Extension | React + Vite + Chrome Manifest V3 |
-| Cryptography | ed25519-dalek, ChaCha20-Poly1305, Argon2 |
-| Sync | Automerge CRDT (WIP) |
+| Browser Extension | React 19 + Vite + Chrome Manifest V3 + `@crxjs/vite-plugin` |
+| Backup | Bash + rsync + systemd timers |
+| Analytics | Next.js 16 + Supabase + TailwindCSS + react-globe.gl |
 | VPN | Tailscale (WireGuard) |
+| FFI | UniFFI 0.27 (Mozilla) |
+| PAM | `pamsm` crate |

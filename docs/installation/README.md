@@ -10,29 +10,31 @@ This guide walks you through installing and configuring every component of the F
 2. [Install Rust Toolchain](#1-install-rust-toolchain)
 3. [Install Node.js](#2-install-nodejs)
 4. [Install System Dependencies](#3-install-system-dependencies)
-5. [Clone the Repository](#4-clone-the-repository)
-6. [Build the Rust Workspace](#5-build-the-rust-workspace)
-7. [Set Up the Agent](#6-set-up-the-agent)
-8. [Set Up the Desktop App](#7-set-up-the-desktop-app)
-9. [Set Up the Browser Extension](#8-set-up-the-browser-extension)
-10. [Set Up the Mobile App](#9-set-up-the-mobile-app)
-11. [Install the PAM Module](#10-install-the-pam-module)
-12. [Verify Installation](#11-verify-installation)
+5. [Clone All Repositories](#4-clone-all-repositories)
+6. [Build the Backend](#5-build-the-backend)
+7. [Build the CLI](#6-build-the-cli)
+8. [Set Up the Agent](#7-set-up-the-agent)
+9. [Set Up the Desktop App](#8-set-up-the-desktop-app)
+10. [Set Up the Browser Extension](#9-set-up-the-browser-extension)
+11. [Set Up the Mobile App](#10-set-up-the-mobile-app)
+12. [Install the PAM Module](#11-install-the-pam-module)
+13. [Set Up Backups](#12-set-up-backups)
+14. [Verify Installation](#13-verify-installation)
 
 ---
 
 ## System Requirements
 
 | Component | Minimum | Recommended |
-|-----------|---------|-------------|
+|---|---|---|
 | **OS** | Ubuntu 22.04 / Fedora 38 | Ubuntu 24.04 LTS |
 | **CPU** | 2 cores | 4+ cores |
 | **RAM** | 4 GB | 8 GB+ |
 | **Disk** | 2 GB free | 5 GB+ free |
-| **Rust** | 1.80 | Latest stable |
+| **Rust** | 1.80 (edition 2024) | Latest stable |
 | **Node.js** | 20.x | 22.x LTS |
 | **Android Studio** | Latest | Latest |
-| **Chrome** | 120+ | Latest |
+| **Chrome** | 120+ (Manifest V3) | Latest |
 
 ---
 
@@ -43,7 +45,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 
 # Verify
-rustc --version
+rustc --version   # Expected: 1.80+
 cargo --version
 ```
 
@@ -57,7 +59,7 @@ nvm install 22
 nvm use 22
 
 # Verify
-node --version
+node --version   # Expected: v22.x
 npm --version
 ```
 
@@ -79,6 +81,7 @@ sudo apt update && sudo apt install -y \
     protobuf-compiler \
     wl-clipboard \
     playerctl \
+    socat \
     curl \
     git
 ```
@@ -99,75 +102,114 @@ sudo dnf install -y \
     protobuf-compiler \
     wl-clipboard \
     playerctl \
+    socat \
     curl \
     git
 ```
 
-## 4. Clone the Repository
+> **Note:** `wl-clipboard` is for Wayland clipboard support (used by `/clipboard` endpoint). If running X11, install `xclip` instead. `playerctl` is for media control. `socat` is for IPC debugging.
+
+## 4. Clone All Repositories
 
 ```bash
-git clone https://github.com/yourusername/Fortis-Ecosystem.git
-cd Fortis-Ecosystem
+mkdir -p ~/dev/Fortis-Ecosystem && cd ~/dev/Fortis-Ecosystem
+
+# Backend workspace (agent, core, sync, bindings, pam)
+git clone git@github.com:Fortis-Ecosystem/fortis-backend.git
+
+# Client applications
+git clone git@github.com:Fortis-Ecosystem/fortis-cli.git
+git clone git@github.com:Fortis-Ecosystem/fortis-desktop.git
+git clone git@github.com:Fortis-Ecosystem/fortis-lock.git
+git clone git@github.com:Fortis-Ecosystem/fortis-mobile.git
+
+# Standalone services
+git clone git@github.com:Fortis-Ecosystem/fortis-backup.git
+git clone git@github.com:Fortis-Ecosystem/fortis-observe.git
+
+# Documentation
+git clone git@github.com:Fortis-Ecosystem/docs.git
 ```
 
-## 5. Build the Rust Workspace
+## 5. Build the Backend
 
 ```bash
-# Build all Rust crates in release mode
+cd ~/dev/Fortis-Ecosystem/fortis-backend
+
+# Build all workspace crates in release mode
 cargo build --release
 
 # This builds:
-# - fortis-core (crypto library)
-# - fortis-sync (gRPC proto)
-# - fortis-agent (daemon)
-# - fortis-cli (command-line)
-# - fortis-pam (PAM module)
-# - fortis-bindings (FFI)
-# - fortis-daemon (legacy)
-# - fortis-desktop/src-tauri (Tauri backend)
+# - fortis-core     (crypto library)
+# - fortis-sync     (gRPC proto definitions)
+# - fortis-agent    (daemon binary)
+# - fortis-bindings (UniFFI shared library)
+# - fortis-pam      (PAM shared library)
 ```
 
-## 6. Set Up the Agent
+## 6. Build the CLI
+
+The CLI is a standalone project, not part of the backend workspace.
 
 ```bash
-# Generate a secure API key
-export FORTIS_AGENT_KEY=$(openssl rand -hex 32)
-echo "export FORTIS_AGENT_KEY=$FORTIS_AGENT_KEY" >> ~/.bashrc
+cd ~/dev/Fortis-Ecosystem/fortis-cli
+cargo build --release
+```
 
+## 7. Set Up the Agent
+
+```bash
 # Create data directories
 mkdir -p ~/.local/share/fortis
 mkdir -p ~/.config/fortis
 chmod 700 ~/.local/share/fortis ~/.config/fortis
 
+# Generate a secure API key
+export FORTIS_AGENT_KEY=$(openssl rand -hex 32)
+
+# Store the key (for desktop app and future use)
+echo "FORTIS_AGENT_KEY=$FORTIS_AGENT_KEY" > ~/.config/fortis/env
+chmod 600 ~/.config/fortis/env
+
+# Persist in shell
+echo "export FORTIS_AGENT_KEY=$FORTIS_AGENT_KEY" >> ~/.bashrc
+
 # Test run
+cd ~/dev/Fortis-Ecosystem/fortis-backend
 RUST_LOG=info ./target/release/fortis-agent
+# Expected: "REST server started on 0.0.0.0:8023"
+# Press Ctrl+C to stop
 
-# Install as systemd service (optional)
-sudo cp fortis-agent/systemd/fortis-agent.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now fortis-agent
+# Optional: Install as systemd service
+# See the Deployment Guide for full instructions
 ```
 
-## 7. Set Up the Desktop App
+## 8. Set Up the Desktop App
 
 ```bash
-cd fortis-desktop
+cd ~/dev/Fortis-Ecosystem/fortis-desktop
 npm install
-npm run tauri dev    # Development
-npm run tauri build  # Production
+npm run tauri dev    # Development (hot-reload)
+npm run tauri build  # Production (.deb / AppImage)
 ```
 
-## 8. Set Up the Browser Extension
+> **Important:** The Tauri backend depends on `fortis-core` via `path = "../../fortis-backend/fortis-core"`. Both repos must be in the same parent directory.
+
+## 9. Set Up the Browser Extension
 
 ```bash
-cd fortis-lock
+cd ~/dev/Fortis-Ecosystem/fortis-lock
 npm install
 npm run build
 
-# Then load fortis-lock/dist as an unpacked extension in Chrome
+# Load in Chrome:
+# 1. Open chrome://extensions
+# 2. Enable Developer Mode (toggle in top-right)
+# 3. Click "Load Unpacked"
+# 4. Select the fortis-lock/dist folder
 ```
 
-## 9. Set Up the Mobile App
+## 10. Set Up the Mobile App
 
 1. Install [Android Studio](https://developer.android.com/studio)
 2. Install [Tailscale](https://tailscale.com/) on both your Linux machine and Android phone
@@ -175,33 +217,79 @@ npm run build
 4. Build and install the app on your device
 5. Pair with the agent:
    ```bash
+   cd ~/dev/Fortis-Ecosystem/fortis-cli
    ./target/release/fortis-cli pair
-   # Note the 6-digit code, enter it in the mobile app
+   # Note the 6-digit code (format: XXX-XXX)
+   # Enter it in the mobile app along with your Tailscale IP
    ```
 
-## 10. Install the PAM Module
+## 11. Install the PAM Module
 
-> ⚠️ **Caution**: Keep a root terminal open while configuring PAM to avoid lockout.
+> **⚠️ Caution**: Keep a root terminal open while configuring PAM to avoid lockout.
 
 ```bash
-# Copy the library
+cd ~/dev/Fortis-Ecosystem/fortis-backend
+
+# Copy the PAM library
 sudo cp target/release/libfortis_pam.so /lib/security/pam_fortis.so
 
-# Add to PAM config
+# Backup PAM config FIRST
+sudo cp /etc/pam.d/sudo /etc/pam.d/sudo.backup
+
+# Add biometric auth to sudo
+# Add this line BEFORE other auth lines in /etc/pam.d/sudo:
 sudo nano /etc/pam.d/sudo
-# Add this line BEFORE other auth lines:
-# auth sufficient pam_fortis.so
+# Add: auth sufficient pam_fortis.so
 ```
 
-## 11. Verify Installation
+## 12. Set Up Backups
 
 ```bash
-# Run the E2E test script
-./run_e2e_tests.sh
+cd ~/dev/Fortis-Ecosystem/fortis-backup
 
-# Expected output:
-# ✅ Telemetry OK
-# ✅ Add entry OK
-# ✅ Get entries OK
-# 🎉 All E2E tests passed successfully!
+# Create config from example
+cp backup.conf.example backup.conf
+chmod 600 backup.conf
+
+# Edit with your paths
+nano backup.conf
+
+# Make script executable
+chmod +x fortis-backup.sh
+
+# Test run
+./fortis-backup.sh
+
+# Install systemd timer for daily automation
+mkdir -p ~/.config/systemd/user/
+cp systemd/fortis-backup.service ~/.config/systemd/user/
+cp systemd/fortis-backup.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now fortis-backup.timer
+```
+
+## 13. Verify Installation
+
+```bash
+# Check agent is responding
+curl -s -H "Authorization: Bearer $FORTIS_AGENT_KEY" \
+  http://127.0.0.1:8023/api/v1/telemetry | head -c 200
+
+# Check IPC socket
+echo "GET" | socat - UNIX-CONNECT:/tmp/fortis_agent.sock
+
+# Check CLI
+cd ~/dev/Fortis-Ecosystem/fortis-cli
+./target/release/fortis-cli add "Installation Test"
+
+# Check vault database exists
+ls -la ~/.local/share/fortis/vault.db
+
+# Check backup timer
+systemctl --user list-timers --all | grep fortis
+```
+
+Expected output for telemetry:
+```json
+{"cpu":"...","mem_total":"...","mem_used":"...","storage_total":"...","storage_used":"...","temp":"...","uptime":"..."}
 ```

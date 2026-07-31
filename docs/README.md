@@ -2,72 +2,90 @@
 
 > A unified, privacy-first security platform. Password manager, authenticator, biometric sudo, encrypted backup, and browser privacy firewall — all in one cohesive system.
 
+[![Status](https://img.shields.io/badge/Status-Active_Development-emerald?style=for-the-badge)](https://github.com/Fortis-Ecosystem)
+[![Network](https://img.shields.io/badge/Network-Tailscale_Mesh-blue?style=for-the-badge)](https://tailscale.com)
+[![Maintainer](https://img.shields.io/badge/Architect-Ganesh_Angadi-D4AF37?style=for-the-badge)](https://github.com/ganeshak11)
+
 ---
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Fortis Ecosystem                             │
-│                                                                     │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐     │
-│  │ fortis-lock  │   │fortis-desktop│   │ fortis-mobile        │     │
-│  │ (Chrome Ext) │   │ (Tauri App)  │   │ (Android/Compose)    │     │
-│  └──────┬───────┘   └──────┬───────┘   └──────────┬───────────┘     │
-│         │ HTTP             │ HTTP/IPC             │ gRPC            │
-│         ▼                  ▼                      ▼                 │
-│  ┌──────────────────────────────────────────────────────────────┐   │
-│  │                    fortis-agent (Rust Daemon)                │   │
-│  │  REST API (:8023)  │  Unix IPC Socket  │  gRPC (:50051)      │   │
-│  └──────────┬─────────┴────────┬──────────┴────────┬────────────┘   │
-│             │                  │                   │                │
-│  ┌──────────▼──────┐ ┌────────▼────────┐ ┌────────▼────────┐      │
-│  │  fortis-core    │ │  fortis-sync    │ │  fortis-pam     │      │
-│  │  (Crypto/Vault) │ │  (gRPC Proto)  │ │  (PAM Module)   │      │
-│  └─────────────────┘ └────────────────┘ └─────────────────┘      │
-│                                                                     │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐    │
-│  │ fortis-cli    │   │ fortis-backup │   │ fortis-observe       │    │
-│  │ (Terminal UI) │   │ (Bash/Systemd)│   │ (Next.js - Isolated) │    │
-│  └──────────────┘   └──────────────┘   └──────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Clients
+        LOCK["fortis-lock<br/>(Chrome Extension)"]
+        DESKTOP["fortis-desktop<br/>(Tauri App)"]
+        MOBILE["fortis-mobile<br/>(Android/Compose)"]
+        CLI["fortis-cli<br/>(Terminal)"]
+    end
+
+    subgraph "fortis-backend (Rust Workspace)"
+        AGENT["fortis-agent<br/>REST :8023 | IPC | gRPC :50051"]
+        CORE["fortis-core<br/>(Crypto / Vault / DB)"]
+        SYNC["fortis-sync<br/>(gRPC Proto)"]
+        PAM["fortis-pam<br/>(PAM Module)"]
+        BINDINGS["fortis-bindings<br/>(UniFFI)"]
+    end
+
+    subgraph "Standalone Services"
+        BACKUP["fortis-backup<br/>(Bash / systemd)"]
+        OBSERVE["fortis-observe<br/>(Next.js)"]
+    end
+
+    subgraph Storage
+        DB[("vault.db<br/>SQLCipher AES-256")]
+    end
+
+    LOCK -- "HTTP :8023" --> AGENT
+    DESKTOP -- "HTTP :8023 / IPC" --> AGENT
+    MOBILE -- "gRPC via Tailscale" --> AGENT
+    CLI -- "Unix Socket" --> AGENT
+    PAM -- "Unix Socket" --> AGENT
+
+    AGENT --> CORE
+    AGENT --> SYNC
+    CORE --> DB
+    BINDINGS --> CORE
 ```
 
-## Modules
+---
 
-| Module | Language | Description |
-|--------|----------|-------------|
-| [fortis-agent](./fortis-agent/) | Rust | Unified background daemon — REST, IPC, and gRPC server |
-| [fortis-core](./fortis-core/) | Rust | Core cryptographic library — vault encryption, TOTP, Ed25519, password generation |
-| [fortis-sync](./fortis-sync/) | Rust/Protobuf | gRPC protocol definitions and sync logic |
-| [fortis-cli](./fortis-cli/) | Rust | Command-line interface for interacting with the daemon |
-| [fortis-desktop](./fortis-desktop/) | TypeScript/Rust | Tauri desktop application with glassmorphic UI |
-| [fortis-mobile](./fortis-mobile/) | Kotlin | Android app (Jetpack Compose) — vault, authenticator, biometric auth |
-| [fortis-lock](./fortis-lock/) | TypeScript/React | Chrome extension — browser privacy firewall with biometric unlock |
-| [fortis-pam](./fortis-pam/) | C/Rust | Linux PAM module for biometric sudo authentication |
-| [fortis-backup](./fortis-backup/) | Bash | Encrypted incremental backup system with systemd integration |
-| [fortis-observe](./fortis-observe/) | TypeScript/Next.js | Production traffic analysis platform (isolated, standalone) |
-| [fortis-daemon](./fortis-daemon/) | Rust | Legacy daemon module (superseded by fortis-agent) |
-| [fortis-bindings](./fortis-bindings/) | Rust | FFI bindings for cross-platform integration |
+## Repositories
+
+All repositories live under the [Fortis-Ecosystem](https://github.com/Fortis-Ecosystem) GitHub organization.
+
+| Repository | Language | Description |
+|---|---|---|
+| [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) | Rust | Cargo workspace: agent daemon, core crypto library, gRPC sync, PAM module, UniFFI bindings |
+| [fortis-cli](https://github.com/Fortis-Ecosystem/fortis-cli) | Rust | Command-line interface for interacting with the agent daemon over IPC |
+| [fortis-desktop](https://github.com/Fortis-Ecosystem/fortis-desktop) | TypeScript/Rust | Tauri v2 desktop application with glassmorphic UI |
+| [fortis-mobile](https://github.com/Fortis-Ecosystem/fortis-mobile) | Kotlin | Android app (Jetpack Compose) — vault, authenticator, biometric auth |
+| [fortis-lock](https://github.com/Fortis-Ecosystem/fortis-lock) | TypeScript/React | Chrome Manifest V3 extension — browser privacy firewall with biometric unlock |
+| [fortis-backup](https://github.com/Fortis-Ecosystem/fortis-backup) | Bash | Incremental backup engine with hard-linked snapshots, systemd integration, and remote sync |
+| [fortis-observe](https://github.com/Fortis-Ecosystem/fortis-observe) | TypeScript/Next.js | WebGL telemetry and visitor analytics platform (standalone, isolated) |
+| [docs](https://github.com/Fortis-Ecosystem/docs) | Markdown | This repository — ecosystem-wide documentation |
+| [.github](https://github.com/Fortis-Ecosystem/.github) | Markdown | GitHub organization profile |
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
 | Requirement | Version | Purpose |
-|-------------|---------|---------|
-| Rust | 1.80+ | Core daemon, CLI, PAM module |
+|---|---|---|
+| Rust | 1.80+ (edition 2024) | Backend, CLI, PAM module |
 | Node.js | 20+ | Desktop app, Chrome extension |
 | Android Studio | Latest | Mobile app |
-| SQLCipher | 4.x | Encrypted vault database |
+| Tailscale | Latest | VPN mesh for mobile ↔ agent communication |
 
-### 1. Clone and Build
+### 1. Clone and Build the Backend
 
 ```bash
-git clone https://github.com/yourusername/Fortis-Ecosystem.git
-cd Fortis-Ecosystem
+git clone git@github.com:Fortis-Ecosystem/fortis-backend.git
+cd fortis-backend
 
-# Build all Rust crates
+# Build all workspace crates
 cargo build --release
 
 # Set the API key
@@ -77,84 +95,100 @@ export FORTIS_AGENT_KEY=$(openssl rand -hex 32)
 ### 2. Start the Agent
 
 ```bash
-# Run the daemon
 RUST_LOG=info ./target/release/fortis-agent
-
-# Or install as a systemd service
-sudo cp fortis-agent/systemd/fortis-agent.service /etc/systemd/system/
-sudo systemctl enable --now fortis-agent
 ```
+
+The agent starts three transport servers:
+- **REST API** on `0.0.0.0:8023` (Bearer token auth)
+- **IPC Socket** at `/tmp/fortis_agent.sock` (owner-only permissions)
+- **gRPC** on port `50051` (stub — planned for mobile biometric relay)
 
 ### 3. Use the CLI
 
 ```bash
+git clone git@github.com:Fortis-Ecosystem/fortis-cli.git
+cd fortis-cli
+cargo build --release
+
 ./target/release/fortis-cli add "My Secret Note"
-./target/release/fortis-cli list
+./target/release/fortis-cli get "My Secret Note"
 ./target/release/fortis-cli pair
 ```
 
 ### 4. Launch the Desktop App
 
 ```bash
+git clone git@github.com:Fortis-Ecosystem/fortis-desktop.git
 cd fortis-desktop
 npm install
 npm run tauri dev
 ```
 
+> **Note:** The desktop app requires `fortis-backend/fortis-core` at `../../fortis-backend/fortis-core` relative to `src-tauri/`. Ensure the repos are cloned side-by-side in the same parent directory.
+
 ### 5. Load the Browser Extension
 
 ```bash
+git clone git@github.com:Fortis-Ecosystem/fortis-lock.git
 cd fortis-lock
 npm install
 npm run build
-# Open chrome://extensions → Enable Developer Mode → Load Unpacked → select fortis-lock/dist
+# Open chrome://extensions → Enable Developer Mode → Load Unpacked → select dist/
 ```
+
+---
 
 ## Security Model
 
-- **AES-256 Vault Encryption** via SQLCipher with Argon2 key derivation
-- **Ed25519 Signatures** for biometric challenge-response authentication
-- **Zero-Trust Pairing** — devices exchange public keys over a local network with a 6-digit OTP
-- **Zeroize Memory** — all secrets are wiped from RAM after use via the `zeroize` crate
-- **Restrictive File Permissions** — `0600` on vault database and config files
-- **Bearer Token Auth** — all REST API calls require `Authorization: Bearer <FORTIS_AGENT_KEY>`
+- **SQLCipher Vault Encryption** — AES-256 encrypted database with 256,000 KDF iterations
+- **Argon2id Key Derivation** — Master password → 32-byte key via Argon2id (64 MB memory, 3 iterations)
+- **ChaCha20-Poly1305** — Symmetric encryption for individual vault field values
+- **Ed25519 Signatures** — Biometric challenge-response authentication between agent and mobile
+- **Zero-Trust Pairing** — Devices exchange public keys with a single-use 6-digit OTP
+- **Zeroized Memory** — All secrets wrapped in `zeroize::Zeroizing<String>`, wiped from RAM on drop
+- **Bearer Token Auth** — REST API requires `Authorization: Bearer <FORTIS_AGENT_KEY>`
+- **Socket Permissions** — IPC socket restricted to `chmod 0600` (owner-only)
+
+---
 
 ## Documentation
 
-Full documentation is available in the [docs/](./docs/) directory:
+| Guide | Description |
+|---|---|
+| [Installation Guide](./installation/README.md) | Full setup from scratch |
+| [API Reference](./api/README.md) | REST, IPC, and gRPC endpoint documentation |
+| [Architecture Guide](./architecture/README.md) | System design, data flow, component layers |
+| [Security Model](./security/README.md) | Encryption, authentication, threat model |
+| [Development Guide](./development/README.md) | Building, testing, contributing |
+| [Deployment Guide](./deployment/README.md) | Production systemd, PAM, Tauri packaging |
+| [Troubleshooting](./troubleshooting/README.md) | Common issues and debug commands |
 
-- [Installation Guide](./docs/installation/README.md)
-- [API Reference](./docs/api/README.md)
-- [Architecture Guide](./docs/architecture/README.md)
-- [Security Model](./docs/security/README.md)
-- [Development Guide](./docs/development/README.md)
-- [Deployment Guide](./docs/deployment/README.md)
-- [Troubleshooting](./docs/troubleshooting/README.md)
+---
 
-## Project Structure
+## Recommended Directory Layout
+
+For development, clone all repositories side-by-side:
 
 ```
-Fortis-Ecosystem/
-├── Cargo.toml              # Rust workspace manifest
-├── Cargo.lock
-├── README.md               # This file
-├── docs/                   # Comprehensive documentation
-├── fortis-agent/           # Unified Rust daemon
-├── fortis-core/            # Core crypto library
-├── fortis-sync/            # gRPC protocol & sync
-├── fortis-cli/             # Command-line interface
+~/dev/Fortis-Ecosystem/
+├── fortis-backend/         # Rust workspace (agent, core, sync, bindings, pam)
+├── fortis-cli/             # Rust CLI (standalone)
 ├── fortis-desktop/         # Tauri desktop app
 ├── fortis-mobile/          # Android Kotlin app
 ├── fortis-lock/            # Chrome privacy extension
-├── fortis-pam/             # Linux PAM module
-├── fortis-backup/          # Encrypted backup scripts
-├── fortis-observe/         # Traffic analysis (isolated)
-├── fortis-bindings/        # FFI bindings
-├── fortis-daemon/          # Legacy daemon
-├── run_e2e_tests.sh        # E2E test script
-└── archives/               # Archived legacy code
+├── fortis-backup/          # Bash backup engine
+├── fortis-observe/         # Next.js analytics (standalone)
+├── docs/                   # This documentation repo
+└── archives/               # Legacy/archived code
 ```
 
-## License
+> **Important:** `fortis-desktop/src-tauri/Cargo.toml` depends on `fortis-core` via a relative path (`../../fortis-backend/fortis-core`). This layout is required for the desktop app to build.
 
-MIT License — See individual module directories for details.
+---
+
+## Maintainer
+
+**Ganesh Angadi**
+- GitHub: [@ganeshak11](https://github.com/ganeshak11)
+- Portfolio: [ganeshangadi.online](https://ganeshangadi.online)
+- LinkedIn: [Ganesh Angadi](https://linkedin.com/in/ganeshangadi1301)
