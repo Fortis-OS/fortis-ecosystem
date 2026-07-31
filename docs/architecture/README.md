@@ -4,72 +4,17 @@
 
 The Fortis Ecosystem follows a **hub-and-spoke architecture** with `fortis-agent` as the central hub. All client applications communicate through the agent, which manages vault storage, system actions, and biometric authentication.
 
-```mermaid
-graph TD
-    subgraph "Client Layer"
-        LOCK["🔒 fortis-lock<br/>(Chrome Extension)"]
-        DESKTOP["🖥️ fortis-desktop<br/>(Tauri v2)"]
-        MOBILE["📱 fortis-mobile<br/>(Android/Compose)"]
-        CLI["⌨️ fortis-cli<br/>(Terminal)"]
-    end
+<div align="center">
+  <img src="./diagrams/fortis_ecosystem.svg" alt="Fortis Ecosystem Topology" />
+</div>
 
-    subgraph "Agent Layer (fortis-backend)"
-        REST["REST Server<br/>:8023"]
-        IPC["IPC Server<br/>/tmp/fortis_agent.sock"]
-        GRPC["gRPC Server<br/>:50051 (stub)"]
-        MODULES["Module Layer<br/>telemetry | actions | files<br/>vault | backup | auth"]
-    end
+## Workspace Dependency Graph
 
-    subgraph "Core Layer (fortis-backend)"
-        CORE["fortis-core"]
-        VAULT["vault/"]
-        DB["db/"]
-        CRYPTO["crypto/"]
-        AUTH["auth/"]
-        TOTP["totp"]
-        PASSGEN["password_gen"]
-    end
+The `fortis-backend` Rust workspace features multiple interlocking crates. The graph below maps these internal dependencies.
 
-    subgraph "Integration Layer"
-        PAM["fortis-pam<br/>(PAM Module)"]
-        SYNC["fortis-sync<br/>(gRPC Proto)"]
-        BINDINGS["fortis-bindings<br/>(UniFFI)"]
-    end
-
-    subgraph "Standalone Services"
-        BACKUP["fortis-backup<br/>(Bash/systemd)"]
-        OBSERVE["fortis-observe<br/>(Next.js)"]
-    end
-
-    subgraph "Storage"
-        SQLCIPHER[("~/.local/share/fortis/vault.db<br/>SQLCipher AES-256")]
-        PAIRED[("~/.config/fortis/<br/>paired_devices.json")]
-    end
-
-    LOCK -- "HTTP :8023" --> REST
-    DESKTOP -- "HTTP :8023" --> REST
-    CLI -- "Unix Socket" --> IPC
-    MOBILE -. "gRPC (planned)" .-> GRPC
-    PAM -- "Unix Socket" --> IPC
-
-    REST --> MODULES
-    IPC --> MODULES
-    GRPC --> MODULES
-
-    MODULES --> CORE
-    CORE --> VAULT
-    CORE --> DB
-    CORE --> CRYPTO
-    CORE --> AUTH
-    CORE --> TOTP
-    CORE --> PASSGEN
-
-    MODULES --> SYNC
-    BINDINGS --> CORE
-
-    DB --> SQLCIPHER
-    MODULES --> PAIRED
-```
+<div align="center">
+  <img src="./diagrams/rust_dependencies.svg" alt="Rust Workspace Dependency Graph" />
+</div>
 
 ---
 

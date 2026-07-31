@@ -167,6 +167,22 @@ npm run build
 # chrome://extensions → Click refresh icon on FortisLock
 ```
 
+### 4. Documentation
+
+Documentation is maintained in the `docs` repository. It uses standard GitHub Flavored Markdown and Mermaid.
+
+### Architecture Diagrams
+
+The architecture diagrams in `docs/architecture` are dynamic SVGs generated via a build script. If you add a new Rust crate or change the ecosystem topology, you must regenerate them:
+
+```bash
+cd docs
+./scripts/build_diagrams.sh
+```
+
+- High-level topology is defined in `docs/architecture/fortis_ecosystem.dot`.
+- The Rust workspace dependency graph is auto-generated using `cargo depgraph --workspace-only`.
+
 ### Working on `fortis-mobile`
 
 Open `fortis-mobile/android` in Android Studio. Use the built-in build and run tools.

@@ -1,0 +1,102 @@
+digraph G {
+    fontname="Helvetica,Arial,sans-serif"
+    node [fontname="Helvetica,Arial,sans-serif"]
+    edge [fontname="Helvetica,Arial,sans-serif"]
+
+    // Graph styling
+    graph [
+        rankdir=LR,
+        nodesep=0.8,
+        ranksep=1.2,
+        pad="0.5",
+        bgcolor="#0D1117",
+        fontcolor="#FFFFFF",
+        splines=ortho
+    ]
+
+    // Node styles
+    node [
+        shape=box,
+        style="rounded,filled",
+        fillcolor="#161B22",
+        color="#30363D",
+        fontcolor="#C9D1D9",
+        penwidth=1.5,
+        margin="0.3,0.15"
+    ]
+
+    // Edge styles
+    edge [
+        color="#8B949E",
+        penwidth=1.5,
+        arrowsize=0.8,
+        fontcolor="#8B949E",
+        fontsize=10
+    ]
+
+    subgraph cluster_clients {
+        label = "Client Applications"
+        color = "#238636"
+        fontcolor = "#238636"
+        style = "rounded,dashed"
+        penwidth = 2
+        
+        desktop [label="fortis-desktop\n(Tauri v2 / React)", fillcolor="#1F6FEB", fontcolor="#FFFFFF"]
+        mobile [label="fortis-mobile\n(Android / Compose)", fillcolor="#238636", fontcolor="#FFFFFF"]
+        lock [label="fortis-lock\n(Chrome Ext)", fillcolor="#D29922", fontcolor="#FFFFFF"]
+        cli [label="fortis-cli\n(Terminal)", fillcolor="#8957E5", fontcolor="#FFFFFF"]
+    }
+
+    subgraph cluster_backend {
+        label = "fortis-backend (Rust Workspace)"
+        color = "#8957E5"
+        fontcolor = "#8957E5"
+        style = "rounded,dashed"
+        penwidth = 2
+
+        agent [label="fortis-agent\n(REST | IPC | gRPC)", shape=cylinder, fillcolor="#238636", fontcolor="#FFFFFF"]
+        core [label="fortis-core\n(Crypto / Models)"]
+        sync [label="fortis-sync\n(gRPC / CRDT)"]
+        pam [label="fortis-pam\n(PAM Module)"]
+        bindings [label="fortis-bindings\n(UniFFI)"]
+    }
+
+    subgraph cluster_services {
+        label = "Standalone Services"
+        color = "#1F6FEB"
+        fontcolor = "#1F6FEB"
+        style = "rounded,dashed"
+        penwidth = 2
+        
+        backup [label="fortis-backup\n(Bash / systemd)"]
+        observe [label="fortis-observe\n(Next.js Analytics)"]
+    }
+
+    subgraph cluster_storage {
+        label = "Storage"
+        color = "#30363D"
+        fontcolor = "#8B949E"
+        style = "rounded,dashed"
+        
+        db [label="vault.db\n(SQLCipher AES-256)", shape=cylinder, fillcolor="#161B22"]
+    }
+
+    // Connections
+    desktop -> agent [label=" HTTP / IPC", color="#1F6FEB"]
+    mobile -> agent [label=" gRPC (Tailscale)", color="#238636"]
+    lock -> agent [label=" HTTP", color="#D29922"]
+    cli -> agent [label=" Unix Socket", color="#8957E5"]
+    pam -> agent [label=" Unix Socket", color="#8957E5"]
+
+    agent -> core [label=" DB / Crypto"]
+    agent -> sync [label=" Discovery / Sync"]
+    bindings -> core [label=" FFI export"]
+    
+    core -> db [label=" Read / Write", dir=both]
+    
+    // Implicit logical links
+    backup -> db [label=" Rsync / Snapshots", style=dashed]
+    
+    {rank=same; desktop mobile lock cli}
+    {rank=same; backup observe}
+}
