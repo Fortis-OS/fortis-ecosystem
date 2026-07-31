@@ -4,6 +4,7 @@ node_modules/
 dist/
 build/
 .next/
+backup.conf
 
 # OS generated files
 .DS_Store
