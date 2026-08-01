@@ -4,13 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/fortis-agent
+ExecStart=path-to/fortis-backend/target/release/fortis-agent
 Restart=on-failure
 RestartSec=5s
-Environment="FORTIS_AGENT_KEY=change_me_in_production"
+Environment="FORTIS_AGENT_KEY=dev_key"
 Environment="RUST_LOG=info"
-User=%i
-Group=%i
 
 [Install]
 WantedBy=default.target
