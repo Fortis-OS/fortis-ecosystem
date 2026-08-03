@@ -1,20 +1,24 @@
 package com.example.fortismobile.ui.theme
 
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
-private val MonochromeColorScheme = lightColorScheme(
-    primary = Black,
-    onPrimary = White,
-    secondary = DarkGray,
+private val FortisColorScheme = darkColorScheme(
+    primary = White,
+    onPrimary = Black,
+    secondary = MediumGray,
     onSecondary = White,
     tertiary = MediumGray,
     onTertiary = White,
-    background = White,
-    onBackground = Black,
-    surface = White,
-    onSurface = Black
+    background = SurfaceDark,
+    onBackground = TextPrimary,
+    surface = SurfaceCard,
+    onSurface = TextPrimary,
+    surfaceVariant = SurfaceElevated,
+    onSurfaceVariant = TextSecondary,
+    outline = BorderSubtle,
+    outlineVariant = BorderSubtle
 )
 
 @Composable
@@ -22,7 +26,7 @@ fun FortisMobileTheme(
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
-        colorScheme = MonochromeColorScheme,
+        colorScheme = FortisColorScheme,
         typography = Typography,
         content = content
     )

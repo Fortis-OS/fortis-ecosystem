@@ -1,7 +1,6 @@
 package com.example.fortismobile.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,10 +8,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 import android.os.Build
@@ -20,6 +20,7 @@ import com.example.fortismobile.network.BluetoothHidManager
 import com.example.fortismobile.data.Device
 import com.example.fortismobile.network.AgentClient
 import com.example.fortismobile.network.InputSocketClient
+import com.example.fortismobile.ui.components.FortisSpacing
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,7 +58,7 @@ fun RemoteInputScreen(
             }
         }
     }
-    
+
     fun handleMove(dx: Float, dy: Float) {
         if (useBluetooth) {
             val cx = dx.coerceIn(-127f, 127f).toInt().toByte()
@@ -125,14 +126,29 @@ fun RemoteInputScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Remote Input - ${device.name}") },
+                title = {
+                    Text(
+                        "REMOTE_INPUT — ${device.name}",
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
                 navigationIcon = {
                     TextButton(onClick = onNavigateBack) {
-                        Text("Back")
+                        Text(
+                            "< BACK",
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
             )
         }
     ) { padding ->
@@ -140,7 +156,7 @@ fun RemoteInputScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(FortisSpacing.screenPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Software Keyboard Input
@@ -157,28 +173,72 @@ fun RemoteInputScreen(
                         }
                         textValue = it
                     },
-                    label = { Text("Type here to send text...") },
-                    modifier = Modifier.weight(1f)
+                    label = {
+                        Text(
+                            "Type here to send text...",
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                    )
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Button(onClick = {
-                    socketClient?.sendKey("Return")
-                    textValue = TextFieldValue("")
-                }) {
-                    Text("Send")
+                Button(
+                    onClick = {
+                        socketClient?.sendKey("Return")
+                        textValue = TextFieldValue("")
+                    },
+                    shape = RoundedCornerShape(FortisSpacing.buttonCorner),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Text("Send", fontFamily = FontFamily.Monospace)
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
-            
+
+
             // Toggle Bluetooth
-            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Use Bluetooth HID Mode (Zero Latency)", modifier = Modifier.weight(1f))
-                Switch(checked = useBluetooth, onCheckedChange = { useBluetooth = it })
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Use Bluetooth HID Mode (Zero Latency)",
+                    modifier = Modifier.weight(1f),
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Switch(
+                    checked = useBluetooth,
+                    onCheckedChange = { useBluetooth = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                        checkedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                )
             }
-            
-            Text("Trackpad Area", style = MaterialTheme.typography.titleMedium)
+
+            Text(
+                "TRACKPAD_AREA",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onBackground
+            )
 
 
             // Trackpad Area
@@ -186,7 +246,10 @@ fun RemoteInputScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color.DarkGray.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        RoundedCornerShape(16.dp)
+                    )
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
@@ -237,14 +300,18 @@ fun RemoteInputScreen(
                 Text(
                     "1 Finger: Move Mouse\n2 Fingers: Scroll\nTap: Left Click\nLong Press: Right Click",
                     modifier = Modifier.align(Alignment.Center),
-                    color = Color.Gray,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center
                 )
             }
 
             // Dedicated Click Buttons
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Button(
@@ -265,9 +332,13 @@ fun RemoteInputScreen(
                                 }
                             }
                         },
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(FortisSpacing.buttonCorner),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 ) {
-                    Text("Left Click")
+                    Text("LEFT_CLICK", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
                 }
                 Button(
                     onClick = { },
@@ -287,9 +358,13 @@ fun RemoteInputScreen(
                                 }
                             }
                         },
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(FortisSpacing.buttonCorner),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
                 ) {
-                    Text("Right Click")
+                    Text("RIGHT_CLICK", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

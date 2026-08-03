@@ -13,7 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,15 +21,17 @@ import kotlinx.coroutines.launch
 import com.example.fortismobile.ui.FortisViewModel
 import com.example.fortismobile.network.FortisApiClient
 import com.example.fortismobile.domain.VaultEntry
+import com.example.fortismobile.ui.components.FortisActionButton
+import com.example.fortismobile.ui.components.FortisSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VaultScreen(viewModel: FortisViewModel) {
+fun VaultScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
     var searchQuery by remember { mutableStateOf("") }
     var entries by remember { mutableStateOf<List<VaultEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    
+
     val activeDevice by viewModel.activeDevice.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -50,41 +52,58 @@ fun VaultScreen(viewModel: FortisViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
-            .padding(16.dp)
+            .background(MaterialTheme.colorScheme.background)
+            .padding(FortisSpacing.screenPadding)
     ) {
+        FortisActionButton(
+            text = "< GO_BACK",
+            onClick = onBack,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
         Text(
-            text = "Personal Vault",
-            color = Color.White,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
+            text = "VAULT",
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.headlineLarge,
+            fontFamily = FontFamily.Monospace,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search your vault...", color = Color.Gray) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White) },
+            placeholder = { Text("Search your vault...", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onSurface) },
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.White,
-                unfocusedBorderColor = Color.DarkGray,
-                focusedContainerColor = Color(0xFF1E1E1E),
-                unfocusedContainerColor = Color(0xFF1E1E1E),
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
             )
         )
 
         if (isLoading) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally))
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         } else if (error != null) {
-            Text(text = "Error: $error", color = Color.Red, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Text(
+                text = "Error: $error",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         } else {
             val filtered = entries.filter { it.title.contains(searchQuery, ignoreCase = true) }
             if (filtered.isEmpty()) {
-                Text(text = "No entries found.", color = Color.Gray, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Text(
+                    text = "No entries found.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
             } else {
                 LazyColumn {
                     items(filtered) { item ->
@@ -103,22 +122,23 @@ fun VaultItemCard(item: VaultEntry) {
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF1E1E1E))
+            .background(MaterialTheme.colorScheme.surface)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = Icons.Default.Lock,
             contentDescription = "Lock",
-            tint = Color.White,
+            tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(32.dp).padding(end = 12.dp)
         )
         Column {
             Text(
                 text = item.title,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 18.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                fontFamily = FontFamily.Monospace
             )
             val subText = when (item.entryType) {
                 "Login" -> item.username ?: "No username"
@@ -127,8 +147,9 @@ fun VaultItemCard(item: VaultEntry) {
             }
             Text(
                 text = subText,
-                color = Color.Gray,
-                fontSize = 14.sp
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                fontFamily = FontFamily.Monospace
             )
         }
     }

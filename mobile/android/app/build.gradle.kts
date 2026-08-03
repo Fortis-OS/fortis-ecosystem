@@ -78,4 +78,7 @@ dependencies {
     // AppCompat and UI
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
+    
+    // WorkManager
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }

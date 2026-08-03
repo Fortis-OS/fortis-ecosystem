@@ -9,12 +9,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,11 +23,15 @@ import kotlinx.coroutines.delay
 import com.example.fortismobile.ui.FortisViewModel
 import com.example.fortismobile.network.FortisApiClient
 import com.example.fortismobile.domain.VaultEntry
+import com.example.fortismobile.ui.components.FortisActionButton
+import com.example.fortismobile.ui.components.FortisSpacing
+import com.example.fortismobile.ui.theme.StatusGreen
+import com.example.fortismobile.ui.theme.StatusRed
 
 @Composable
-fun AuthenticatorScreen(viewModel: FortisViewModel) {
+fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
     val activeDevice by viewModel.activeDevice.collectAsState()
-    
+
     var entries by remember { mutableStateOf<List<VaultEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -50,30 +54,47 @@ fun AuthenticatorScreen(viewModel: FortisViewModel) {
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = System.currentTimeMillis()
-            delay(1000L) // Update every second
+            delay(1000L)
         }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF121212))
-            .padding(16.dp)
+            .background(MaterialTheme.colorScheme.background)
+            .padding(FortisSpacing.screenPadding)
     ) {
+        FortisActionButton(
+            text = "< GO_BACK",
+            onClick = onBack,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
         Text(
-            text = "Authenticator",
-            color = Color.White,
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Bold,
+            text = "AUTHENTICATOR",
+            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.headlineLarge,
+            fontFamily = FontFamily.Monospace,
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
         if (isLoading) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally))
+            CircularProgressIndicator(
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         } else if (error != null) {
-            Text(text = "Error: $error", color = Color.Red, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Text(
+                text = "Error: $error",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         } else if (entries.isEmpty()) {
-            Text(text = "No TOTP secrets found in Vault.", color = Color.Gray, modifier = Modifier.align(Alignment.CenterHorizontally))
+            Text(
+                text = "No TOTP secrets found in Vault.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
         } else {
             LazyColumn {
                 items(entries) { item ->
@@ -104,7 +125,7 @@ fun AuthenticatorItemCard(title: String, secretBase32: String, currentTimeMillis
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF1E1E1E))
+            .background(MaterialTheme.colorScheme.surface)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -112,23 +133,24 @@ fun AuthenticatorItemCard(title: String, secretBase32: String, currentTimeMillis
         Column {
             Text(
                 text = title,
-                color = Color.Gray,
-                fontSize = 14.sp
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 14.sp,
+                fontFamily = FontFamily.Monospace
             )
             Text(
                 text = if (totpCode.length == 6) "${totpCode.substring(0,3)} ${totpCode.substring(3)}" else totpCode,
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 letterSpacing = 2.sp
             )
         }
-        
+
         CircularProgressIndicator(
-            progress = animatedProgress,
-            color = if (remainingSeconds > 5) Color(0xFF4CAF50) else Color(0xFFF44336),
-            trackColor = Color.DarkGray,
+            progress = { animatedProgress },
+            color = if (remainingSeconds > 5) StatusGreen else StatusRed,
+            trackColor = MaterialTheme.colorScheme.outline,
             modifier = Modifier.size(36.dp),
             strokeWidth = 4.dp
         )
