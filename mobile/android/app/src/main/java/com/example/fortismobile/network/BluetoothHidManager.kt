@@ -110,9 +110,13 @@ class BluetoothHidManager(private val context: Context) {
 
     private val profileListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-            if (profile == BluetoothProfile.HID_DEVICE) {
-                hidDevice = proxy as BluetoothHidDevice
-                registerApp()
+            try {
+                if (profile == BluetoothProfile.HID_DEVICE) {
+                    hidDevice = proxy as BluetoothHidDevice
+                    registerApp()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in onServiceConnected: ${e.message}")
             }
         }
 

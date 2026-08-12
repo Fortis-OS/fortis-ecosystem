@@ -27,6 +27,18 @@ import com.example.fortismobile.ui.components.FortisActionButton
 import com.example.fortismobile.ui.components.FortisSpacing
 import com.example.fortismobile.ui.theme.StatusGreen
 import com.example.fortismobile.ui.theme.StatusRed
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import kotlinx.coroutines.launch
 
 @Composable
 fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
@@ -36,6 +48,42 @@ fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var showAddDialog by remember { mutableStateOf(false) }
+    var newEntryTitle by remember { mutableStateOf("") }
+    var newEntrySecret by remember { mutableStateOf("") }
+
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        if (result.contents != null) {
+            try {
+                val uri = Uri.parse(result.contents)
+                if (uri.scheme == "otpauth" && uri.host == "totp") {
+                    val secret = uri.getQueryParameter("secret")
+                    val path = uri.path?.removePrefix("/") ?: "Unknown"
+                    val issuer = uri.getQueryParameter("issuer") ?: path
+                    
+                    if (secret != null) {
+                        coroutineScope.launch {
+                            try {
+                                FortisApiClient.addTotpEntry(issuer, secret)
+                                Toast.makeText(context, "Added Token", Toast.LENGTH_SHORT).show()
+                                val fetched = FortisApiClient.fetchVaultEntries()
+                                entries = fetched.filter { it.totpSecret != null }
+                            } catch (e: Exception) {
+                                error = e.message
+                            }
+                        }
+                    }
+                } else {
+                    Toast.makeText(context, "Invalid QR Code", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Invalid QR Code", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     LaunchedEffect(activeDevice) {
         if (activeDevice != null) {
@@ -70,13 +118,26 @@ fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        Text(
-            text = "AUTHENTICATOR",
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.headlineLarge,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "AUTHENTICATOR",
+                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.headlineLarge,
+                fontFamily = FontFamily.Monospace,
+            )
+            
+            Button(
+                onClick = { showAddDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                shape = RoundedCornerShape(FortisSpacing.buttonCorner)
+            ) {
+                Text("+ ADD", fontFamily = FontFamily.Monospace)
+            }
+        }
 
         if (isLoading) {
             CircularProgressIndicator(
@@ -106,6 +167,73 @@ fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
                 }
             }
         }
+    }
+
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Add Token", fontFamily = FontFamily.Monospace) },
+            text = {
+                Column {
+                    Button(
+                        onClick = {
+                            showAddDialog = false
+                            val options = ScanOptions().apply {
+                                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                                setPrompt("Scan Authenticator QR Code")
+                                setBeepEnabled(false)
+                            }
+                            scanLauncher.launch(options)
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        shape = RoundedCornerShape(FortisSpacing.buttonCorner)
+                    ) {
+                        Text("SCAN QR CODE", fontFamily = FontFamily.Monospace)
+                    }
+                    
+                    Text("Or enter manually:", fontFamily = FontFamily.Monospace, modifier = Modifier.padding(bottom = 8.dp))
+                    
+                    OutlinedTextField(
+                        value = newEntryTitle,
+                        onValueChange = { newEntryTitle = it },
+                        label = { Text("Account Name") },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    )
+                    OutlinedTextField(
+                        value = newEntrySecret,
+                        onValueChange = { newEntrySecret = it },
+                        label = { Text("Secret Key") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newEntryTitle.isNotBlank() && newEntrySecret.isNotBlank()) {
+                        showAddDialog = false
+                        coroutineScope.launch {
+                            try {
+                                FortisApiClient.addTotpEntry(newEntryTitle, newEntrySecret)
+                                Toast.makeText(context, "Added Token", Toast.LENGTH_SHORT).show()
+                                newEntryTitle = ""
+                                newEntrySecret = ""
+                                val fetched = FortisApiClient.fetchVaultEntries()
+                                entries = fetched.filter { it.totpSecret != null }
+                            } catch (e: Exception) {
+                                error = e.message
+                            }
+                        }
+                    }
+                }) {
+                    Text("SAVE")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddDialog = false }) {
+                    Text("CANCEL")
+                }
+            }
+        )
     }
 }
 

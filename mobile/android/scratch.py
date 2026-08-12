@@ -41,6 +41,6 @@ def generate_icons(source_path, res_path):
 
 if __name__ == "__main__":
     source_image = "/home/ganeshak11/.gemini/antigravity-ide/brain/25d85b06-a510-400f-b02b-5461f710dfd8/fortis_app_icon_1785777375744.png"
-    res_directory = "/home/ganeshak11/dev/Fortis-Ecosystem/fortis-mobile/android/app/src/main/res"
+    res_directory = "/home/ganeshak11/dev/Fortis/Fortis-Ecosystem/fortis-mobile/android/app/src/main/res"
     generate_icons(source_image, res_directory)
     print("Icons generated successfully!")

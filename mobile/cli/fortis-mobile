@@ -257,12 +257,17 @@ cmd_stop() {
     # Remove the persistent notification
     termux-notification-remove "$FM_NOTIFICATION_ID" 2>/dev/null && log "✔ Notification cleared" || true
 
-    # Stop sshd
+    # Stop sshd and close Termux completely in the background
     if pgrep -x sshd > /dev/null 2>&1; then
-        pkill sshd 2>/dev/null
-        log "✔ sshd stopped"
+        (
+            sleep 2
+            pkill sshd 2>/dev/null
+            kill -9 -1 2>/dev/null
+        ) >/dev/null 2>&1 &
+        log "✔ sshd will be stopped and Termux closed in 2 seconds"
     else
         log "  sshd was not running"
+        ( sleep 2; kill -9 -1 2>/dev/null ) >/dev/null 2>&1 &
     fi
 
     log "✔ Backup Mode stopped"

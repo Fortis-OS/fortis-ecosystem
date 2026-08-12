@@ -117,11 +117,17 @@ fun RemoteInputScreen(
             client = AgentClient.getClient(device.apiKey),
             hostUrl = "http://${device.ipAddress}:8023" // Assume default port
         )
-        client.connect()
-        socketClient = client
+        try {
+            client.connect()
+            socketClient = client
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         onDispose {
-            client.disconnect()
+            try {
+                client.disconnect()
+            } catch (e: Exception) {}
         }
     }
 

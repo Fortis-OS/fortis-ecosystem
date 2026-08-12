@@ -8,6 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import com.example.fortismobile.domain.VaultEntry
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 
 object FortisApiClient {
     private val client = OkHttpClient.Builder()
@@ -53,5 +55,23 @@ object FortisApiClient {
             e.printStackTrace()
         }
         return@withContext entries
+    }
+
+    suspend fun addTotpEntry(title: String, secret: String) = withContext(Dispatchers.IO) {
+        val jsonPayload = org.json.JSONObject().apply {
+            put("title", title)
+            put("notes", "Added via Fortis Mobile")
+            put("entry_type", "Login")
+            put("totp_secret", secret)
+        }.toString()
+
+        val mediaType = "application/json".toMediaTypeOrNull()
+        val requestBody = jsonPayload.toRequestBody(mediaType)
+        val request = buildRequest("/api/v1/vault/entries") { post(requestBody) }
+        
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw Exception("Failed to add TOTP entry: ${response.code}")
+        }
     }
 }
