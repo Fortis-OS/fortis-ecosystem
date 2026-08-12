@@ -48,6 +48,7 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
         .route("/files/download", get(handle_file_download))
         .route("/backup/logs", get(handle_logs))
         .route("/vault/entries", get(handle_vault_entries).post(handle_add_vault_entry))
+        .route("/input", get(handle_input_socket))
         .route_layer(middleware::from_fn(auth_middleware));
 
     let public_routes = Router::new()
@@ -313,4 +314,98 @@ async fn handle_auth_unlock(axum::Json(payload): axum::Json<AuthUnlockPayload>) 
     } else {
         Err(StatusCode::UNAUTHORIZED)
     }
+}
+
+use axum::extract::ws::{WebSocketUpgrade, WebSocket, Message};
+
+async fn handle_input_socket(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(handle_socket)
+}
+
+async fn handle_socket(mut socket: WebSocket) {
+    use tokio::process::Command;
+    use std::process::Stdio;
+    use tokio::io::AsyncWriteExt;
+
+    let mut cmd = match Command::new("xdotool")
+        .arg("-")
+        .env("XDO_DELAY", "0")
+        .stdin(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            log::error!("Failed to start xdotool: {}", e);
+            return;
+        }
+    };
+
+    let mut stdin = cmd.stdin.take().expect("Failed to open stdin");
+    let mut acc_x = 0.0;
+    let mut acc_y = 0.0;
+
+    while let Some(Ok(msg)) = socket.recv().await {
+        if let Message::Text(text) = msg {
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&text) {
+                let typ = payload["type"].as_str().unwrap_or("");
+                match typ {
+                    "mousemove" => {
+                        acc_x += payload["dx"].as_f64().unwrap_or(0.0);
+                        acc_y += payload["dy"].as_f64().unwrap_or(0.0);
+                        let ix = acc_x as i32;
+                        let iy = acc_y as i32;
+                        if ix != 0 || iy != 0 {
+                            let _ = stdin.write_all(format!("mousemove_relative -- {} {}\n", ix, iy).as_bytes()).await;
+                            acc_x -= ix as f64;
+                            acc_y -= iy as f64;
+                        }
+                    }
+                    "mouseclick" => {
+                        if let Some(button) = payload["button"].as_i64() {
+                            let _ = stdin.write_all(format!("click {}\n", button).as_bytes()).await;
+                        }
+                    }
+                    "mousedown" => {
+                        if let Some(button) = payload["button"].as_i64() {
+                            let _ = stdin.write_all(format!("mousedown {}\n", button).as_bytes()).await;
+                        }
+                    }
+                    "mouseup" => {
+                        if let Some(button) = payload["button"].as_i64() {
+                            let _ = stdin.write_all(format!("mouseup {}\n", button).as_bytes()).await;
+                        }
+                    }
+                    "scroll" => {
+                        let dy = payload["dy"].as_i64().unwrap_or(0);
+                        if dy > 0 {
+                            let _ = stdin.write_all(format!("click --repeat {} 5\n", dy).as_bytes()).await;
+                        } else if dy < 0 {
+                            let _ = stdin.write_all(format!("click --repeat {} 4\n", -dy).as_bytes()).await;
+                        }
+                        let dx = payload["dx"].as_i64().unwrap_or(0);
+                        if dx > 0 {
+                            let _ = stdin.write_all(format!("click --repeat {} 7\n", dx).as_bytes()).await;
+                        } else if dx < 0 {
+                            let _ = stdin.write_all(format!("click --repeat {} 6\n", -dx).as_bytes()).await;
+                        }
+                    }
+                    "keydown" => {
+                        if let Some(key) = payload["key"].as_str() {
+                            let _ = stdin.write_all(format!("key {}\n", key).as_bytes()).await;
+                        }
+                    }
+                    "type" => {
+                        if let Some(text_payload) = payload["text"].as_str() {
+                            let text_payload = text_payload.replace("'", "'\\''");
+                            let _ = stdin.write_all(format!("type --clearmodifiers '{}'\n", text_payload).as_bytes()).await;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    
+    // Kill the xdotool process if socket closes
+    let _ = cmd.kill().await;
 }

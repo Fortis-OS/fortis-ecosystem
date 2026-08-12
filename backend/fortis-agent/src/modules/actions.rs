@@ -37,7 +37,7 @@ pub fn handle_action(action: &str) -> Result<Value, String> {
     
     match action {
         "lock_screen" => { let _ = Command::new("loginctl").arg("lock-session").spawn(); }
-        "run_backup" => { let _ = Command::new("/home/ganeshak11/dev/Fortis-Ecosystem/FortisBackup/fortis-backup.sh").spawn(); }
+        "run_backup" => { let _ = Command::new("/home/ganeshak11/dev/Fortis/Fortis-Ecosystem/FortisBackup/fortis-backup.sh").spawn(); }
         "media_play_pause" => { let _ = Command::new("playerctl").arg("play-pause").spawn(); }
         "media_next" => { let _ = Command::new("playerctl").arg("next").spawn(); }
         "media_prev" => { let _ = Command::new("playerctl").arg("previous").spawn(); }
