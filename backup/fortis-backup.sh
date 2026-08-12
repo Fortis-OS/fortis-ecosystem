@@ -506,7 +506,10 @@ if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
         ssh "${SSH_OPTS[@]}" "$MOBILE_IP" "mkdir -p ~/FortisVault/Daily/$TODAY" 2>/dev/null
 
         # Push today's freshly created snapshot to remote
-        rsync -a -e "$SSH_CMD_STR" \
+        # Fix: Replaced -a (archive) with -rlt (recursive, links, times) to avoid 
+        # Android metadata hang-ups (owner/group/perms) at the end of the transfer.
+        # Added --timeout=60, --omit-dir-times, and --inplace to fix Android filesystem stalls.
+        rsync -rlt --omit-dir-times --inplace --timeout=60 -e "$SSH_CMD_STR" \
             "$BACKUP_ROOT/FortisGIT/Daily/$TODAY/" \
             "$MOBILE_IP:~/FortisVault/Daily/$TODAY/" 2>>"$MIRROR_LOG"
 
