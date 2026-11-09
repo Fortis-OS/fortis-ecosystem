@@ -1,45 +1,90 @@
+//! Interim vault state on top of the v2 `fortis-core` database.
+//!
+//! The unlocked vault is held in memory as a `VaultDb` (which owns the vault
+//! key); locking drops it. Listener/auth hardening and auto-lock arrive with
+//! the full agent rewrite (see docs/README.md implementation status).
+
 use std::path::PathBuf;
-use std::fs;
-use std::sync::RwLock;
-use lazy_static::lazy_static;
+use std::sync::{Mutex, MutexGuard};
 
-use fortis_core::crypto::{derive_master_key, MasterKey};
-use fortis_core::db::Database;
+use fortis_core::db::{DbError, VaultDb, VaultPaths};
 
-lazy_static! {
-    pub static ref MASTER_KEY: RwLock<Option<MasterKey>> = RwLock::new(None);
+static VAULT: Mutex<Option<VaultDb>> = Mutex::new(None);
+
+fn guard() -> MutexGuard<'static, Option<VaultDb>> {
+    // A panic while holding the lock must not brick the agent.
+    VAULT.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-pub fn unlock_vault(password: &str) -> Result<(), String> {
-    let salt = b"fortis_salt_static_for_now"; // In a real app, this should be generated per DB and stored unencrypted.
-    let key = derive_master_key(password, salt).map_err(|e| e.to_string())?;
-    
-    // Test open
+pub fn data_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let db_dir = PathBuf::from(home).join(".local/share/fortis");
-    fs::create_dir_all(&db_dir).unwrap_or_default();
-    let db_path = db_dir.join("vault.db");
-    
-    // We try to open to verify the key. If it fails, the key is wrong.
-    let _db = Database::open(&db_path, &key).map_err(|e| format!("Failed to unlock: {}", e))?;
-    
-    let mut lock = MASTER_KEY.write().unwrap();
-    *lock = Some(key);
-    
+    PathBuf::from(home).join(".local/share/fortis")
+}
+
+pub fn paths() -> VaultPaths {
+    VaultPaths::in_dir(data_dir())
+}
+
+fn ensure_dir() -> Result<(), DbError> {
+    let dir = data_dir();
+    std::fs::create_dir_all(&dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+    }
     Ok(())
 }
 
-pub fn lock_vault() {
-    let mut lock = MASTER_KEY.write().unwrap();
-    *lock = None;
+pub fn state() -> &'static str {
+    if guard().is_some() {
+        "unlocked"
+    } else if paths().exists() {
+        "locked"
+    } else {
+        "uninitialised"
+    }
 }
 
-pub fn get_db() -> Result<Database, String> {
-    let lock = MASTER_KEY.read().unwrap();
-    let key = lock.as_ref().ok_or("Vault is locked")?;
-    
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let db_path = PathBuf::from(home).join(".local/share/fortis/vault.db");
-    
-    Database::open(db_path, key).map_err(|e| e.to_string())
+/// Create a new vault (min 12-char password) and leave it unlocked.
+pub fn init(password: &str) -> Result<(), DbError> {
+    if password.chars().count() < 12 {
+        return Err(fortis_core::vault::ValidationError("password must be at least 12 characters".into()).into());
+    }
+    ensure_dir()?;
+    let db = VaultDb::create(&paths(), password)?;
+    *guard() = Some(db);
+    Ok(())
+}
+
+pub fn unlock(password: &str) -> Result<(), DbError> {
+    let db = VaultDb::open(&paths(), password)?;
+    *guard() = Some(db);
+    Ok(())
+}
+
+pub fn lock() {
+    *guard() = None;
+}
+
+/// Run `f` against the unlocked vault.
+pub fn with_db<T>(f: impl FnOnce(&mut VaultDb) -> Result<T, DbError>) -> Result<T, VaultAccessError> {
+    let mut g = guard();
+    let db = g.as_mut().ok_or(VaultAccessError::Locked)?;
+    f(db).map_err(VaultAccessError::Db)
+}
+
+#[derive(Debug)]
+pub enum VaultAccessError {
+    Locked,
+    Db(DbError),
+}
+
+impl std::fmt::Display for VaultAccessError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VaultAccessError::Locked => f.write_str("vault is locked"),
+            VaultAccessError::Db(e) => write!(f, "{e}"),
+        }
+    }
 }

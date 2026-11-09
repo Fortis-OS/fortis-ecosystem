@@ -1,6 +1,14 @@
 [workspace]
-members = [
-    "fortis-core",
-    "fortis-agent"
-, "fortis-bindings"]
+members = ["fortis-core", "fortis-agent", "fortis-bindings"]
 resolver = "2"
+
+# Argon2id with the spec's parameters (64 MiB, t=3, p=4) is very slow when
+# unoptimised. Optimise the crypto crates even in dev/test builds.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.chacha20poly1305]
+opt-level = 3
+[profile.dev.package.p256]
+opt-level = 3

@@ -696,6 +696,24 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -711,12 +729,30 @@ internal interface UniffiLib : Library {
         
     }
 
-    fun uniffi_fortis_bindings_fn_func_fortis_decrypt_entry(`vaultKeyBytes`: RustBuffer.ByValue,`encryptedEntry`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_fortis_bindings_fn_func_canonical_approval(`requestJson`: RustBuffer.ByValue,`decision`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_fortis_bindings_fn_func_fortis_generate_totp(`secretBase32`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_fortis_bindings_fn_func_canonical_request(`method`: RustBuffer.ByValue,`pathAndQuery`: RustBuffer.ByValue,`timestamp`: Long,`nonceHex`: RustBuffer.ByValue,`body`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_fortis_bindings_fn_func_fortis_totp_remaining_seconds(uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_fortis_bindings_fn_func_canonical_session(`sessionId`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`issuedAt`: Long,`kind`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_decrypt_entry(`vaultKey`: RustBuffer.ByValue,`entryId`: RustBuffer.ByValue,`version`: Long,`blob`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_derive_wrap_key(`password`: RustBuffer.ByValue,`metaJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_encrypt_entry(`vaultKey`: RustBuffer.ByValue,`entryId`: RustBuffer.ByValue,`version`: Long,`entryJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_generate_password(`length`: Int,`uppercase`: Byte,`numbers`: Byte,`symbols`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_generate_totp(`configJson`: RustBuffer.ByValue,`unixTime`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_key_fingerprint(`pubkeyB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_totp_remaining_secs(`period`: Int,`unixTime`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
+    fun uniffi_fortis_bindings_fn_func_unwrap_vault_key(`wrapKey`: RustBuffer.ByValue,`wrapped`: RustBuffer.ByValue,`vaultId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_verify_agent_signature(`agentPubkeyB64`: RustBuffer.ByValue,`message`: RustBuffer.ByValue,`signatureB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     fun ffi_fortis_bindings_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun ffi_fortis_bindings_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -829,11 +865,29 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_fortis_bindings_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_fortis_bindings_checksum_func_fortis_decrypt_entry(
+    fun uniffi_fortis_bindings_checksum_func_canonical_approval(
     ): Short
-    fun uniffi_fortis_bindings_checksum_func_fortis_generate_totp(
+    fun uniffi_fortis_bindings_checksum_func_canonical_request(
     ): Short
-    fun uniffi_fortis_bindings_checksum_func_fortis_totp_remaining_seconds(
+    fun uniffi_fortis_bindings_checksum_func_canonical_session(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_decrypt_entry(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_derive_wrap_key(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_encrypt_entry(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_generate_password(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_generate_totp(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_key_fingerprint(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_totp_remaining_secs(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_unwrap_vault_key(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_verify_agent_signature(
     ): Short
     fun ffi_fortis_bindings_uniffi_contract_version(
     ): Int
@@ -852,13 +906,40 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
-    if (lib.uniffi_fortis_bindings_checksum_func_fortis_decrypt_entry() != 2298.toShort()) {
+    if (lib.uniffi_fortis_bindings_checksum_func_canonical_approval() != 29670.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fortis_bindings_checksum_func_fortis_generate_totp() != 16930.toShort()) {
+    if (lib.uniffi_fortis_bindings_checksum_func_canonical_request() != 16068.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fortis_bindings_checksum_func_fortis_totp_remaining_seconds() != 4567.toShort()) {
+    if (lib.uniffi_fortis_bindings_checksum_func_canonical_session() != 30722.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_decrypt_entry() != 31406.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_derive_wrap_key() != 6910.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_encrypt_entry() != 48075.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_generate_password() != 36359.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_generate_totp() != 31889.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_key_fingerprint() != 45922.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_totp_remaining_secs() != 57868.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_unwrap_vault_key() != 54036.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_verify_agent_signature() != 51981.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -901,6 +982,26 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
 /** Used to instantiate an interface without an actual pointer, for fakes in tests, mostly. */
 object NoPointer
 
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
+    override fun lift(value: Int): UInt {
+        return value.toUInt()
+    }
+
+    override fun read(buf: ByteBuffer): UInt {
+        return lift(buf.getInt())
+    }
+
+    override fun lower(value: UInt): Int {
+        return value.toInt()
+    }
+
+    override fun allocationSize(value: UInt) = 4UL
+
+    override fun write(value: UInt, buf: ByteBuffer) {
+        buf.putInt(value.toInt())
+    }
+}
+
 public object FfiConverterULong: FfiConverter<ULong, Long> {
     override fun lift(value: Long): ULong {
         return value.toULong()
@@ -918,6 +1019,26 @@ public object FfiConverterULong: FfiConverter<ULong, Long> {
 
     override fun write(value: ULong, buf: ByteBuffer) {
         buf.putLong(value.toLong())
+    }
+}
+
+public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
+    override fun lift(value: Byte): Boolean {
+        return value.toInt() != 0
+    }
+
+    override fun read(buf: ByteBuffer): Boolean {
+        return lift(buf.get())
+    }
+
+    override fun lower(value: Boolean): Byte {
+        return if (value) 1.toByte() else 0.toByte()
+    }
+
+    override fun allocationSize(value: Boolean) = 1UL
+
+    override fun write(value: Boolean, buf: ByteBuffer) {
+        buf.put(lower(value))
     }
 }
 
@@ -997,7 +1118,7 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 
 sealed class BindingException: Exception() {
     
-    class CryptoException(
+    class InvalidInput(
         
         val `msg`: kotlin.String
         ) : BindingException() {
@@ -1005,12 +1126,10 @@ sealed class BindingException: Exception() {
             get() = "msg=${ `msg` }"
     }
     
-    class TotpException(
-        
-        val `msg`: kotlin.String
+    class Crypto(
         ) : BindingException() {
         override val message
-            get() = "msg=${ `msg` }"
+            get() = ""
     }
     
 
@@ -1026,71 +1145,184 @@ public object FfiConverterTypeBindingError : FfiConverterRustBuffer<BindingExcep
         
 
         return when(buf.getInt()) {
-            1 -> BindingException.CryptoException(
+            1 -> BindingException.InvalidInput(
                 FfiConverterString.read(buf),
                 )
-            2 -> BindingException.TotpException(
-                FfiConverterString.read(buf),
-                )
+            2 -> BindingException.Crypto()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
 
     override fun allocationSize(value: BindingException): ULong {
         return when(value) {
-            is BindingException.CryptoException -> (
+            is BindingException.InvalidInput -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.`msg`)
             )
-            is BindingException.TotpException -> (
+            is BindingException.Crypto -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
-                + FfiConverterString.allocationSize(value.`msg`)
             )
         }
     }
 
     override fun write(value: BindingException, buf: ByteBuffer) {
         when(value) {
-            is BindingException.CryptoException -> {
+            is BindingException.InvalidInput -> {
                 buf.putInt(1)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
-            is BindingException.TotpException -> {
+            is BindingException.Crypto -> {
                 buf.putInt(2)
-                FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 
 }
-    @Throws(BindingException::class) fun `fortisDecryptEntry`(`vaultKeyBytes`: kotlin.ByteArray, `encryptedEntry`: kotlin.ByteArray): kotlin.ByteArray {
+        /**
+         * Bytes to sign with the approval key. `request_json` is the `sudo_request`
+         * event payload's challenge fields; `decision` is "approve" or "deny".
+         */
+    @Throws(BindingException::class) fun `canonicalApproval`(`requestJson`: kotlin.String, `decision`: kotlin.String): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     uniffiRustCallWithError(BindingException) { _status ->
-    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_fortis_decrypt_entry(
-        FfiConverterByteArray.lower(`vaultKeyBytes`),FfiConverterByteArray.lower(`encryptedEntry`),_status)
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_canonical_approval(
+        FfiConverterString.lower(`requestJson`),FfiConverterString.lower(`decision`),_status)
 }
     )
     }
     
 
-    @Throws(BindingException::class) fun `fortisGenerateTotp`(`secretBase32`: kotlin.String): kotlin.String {
-            return FfiConverterString.lift(
-    uniffiRustCallWithError(BindingException) { _status ->
-    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_fortis_generate_totp(
-        FfiConverterString.lower(`secretBase32`),_status)
+        /**
+         * Bytes to sign with the request key.
+         */ fun `canonicalRequest`(`method`: kotlin.String, `pathAndQuery`: kotlin.String, `timestamp`: kotlin.ULong, `nonceHex`: kotlin.String, `body`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_canonical_request(
+        FfiConverterString.lower(`method`),FfiConverterString.lower(`pathAndQuery`),FfiConverterULong.lower(`timestamp`),FfiConverterString.lower(`nonceHex`),FfiConverterByteArray.lower(`body`),_status)
 }
     )
     }
     
- fun `fortisTotpRemainingSeconds`(): kotlin.ULong {
+
+        /**
+         * Bytes to sign with the approval key to confirm a session.
+         */
+    @Throws(BindingException::class) fun `canonicalSession`(`sessionId`: kotlin.String, `nonce`: kotlin.String, `issuedAt`: kotlin.ULong, `kind`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_canonical_session(
+        FfiConverterString.lower(`sessionId`),FfiConverterString.lower(`nonce`),FfiConverterULong.lower(`issuedAt`),FfiConverterString.lower(`kind`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Returns the entry as JSON (`VaultEntry`).
+         */
+    @Throws(BindingException::class) fun `decryptEntry`(`vaultKey`: kotlin.ByteArray, `entryId`: kotlin.String, `version`: kotlin.ULong, `blob`: kotlin.ByteArray): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_decrypt_entry(
+        FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`entryId`),FfiConverterULong.lower(`version`),FfiConverterByteArray.lower(`blob`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Argon2id + HKDF from the `meta` JSON returned by `/sync/bootstrap`.
+         * Returns the 32-byte wrap key; the caller must wipe it after use.
+         */
+    @Throws(BindingException::class) fun `deriveWrapKey`(`password`: kotlin.String, `metaJson`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_derive_wrap_key(
+        FfiConverterString.lower(`password`),FfiConverterString.lower(`metaJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Encrypts entry JSON for upload; validates that its `id` matches.
+         */
+    @Throws(BindingException::class) fun `encryptEntry`(`vaultKey`: kotlin.ByteArray, `entryId`: kotlin.String, `version`: kotlin.ULong, `entryJson`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_encrypt_entry(
+        FfiConverterByteArray.lower(`vaultKey`),FfiConverterString.lower(`entryId`),FfiConverterULong.lower(`version`),FfiConverterString.lower(`entryJson`),_status)
+}
+    )
+    }
+    
+
+    @Throws(BindingException::class) fun `generatePassword`(`length`: kotlin.UInt, `uppercase`: kotlin.Boolean, `numbers`: kotlin.Boolean, `symbols`: kotlin.Boolean): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_generate_password(
+        FfiConverterUInt.lower(`length`),FfiConverterBoolean.lower(`uppercase`),FfiConverterBoolean.lower(`numbers`),FfiConverterBoolean.lower(`symbols`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * `config_json` is a `TotpConfig`.
+         */
+    @Throws(BindingException::class) fun `generateTotp`(`configJson`: kotlin.String, `unixTime`: kotlin.ULong): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_generate_totp(
+        FfiConverterString.lower(`configJson`),FfiConverterULong.lower(`unixTime`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Fingerprint shown during pairing (first 16 hex of SHA-256 of the key).
+         */
+    @Throws(BindingException::class) fun `keyFingerprint`(`pubkeyB64`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_key_fingerprint(
+        FfiConverterString.lower(`pubkeyB64`),_status)
+}
+    )
+    }
+    
+ fun `totpRemainingSecs`(`period`: kotlin.UInt, `unixTime`: kotlin.ULong): kotlin.ULong {
             return FfiConverterULong.lift(
     uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_fortis_totp_remaining_seconds(
-        _status)
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_totp_remaining_secs(
+        FfiConverterUInt.lower(`period`),FfiConverterULong.lower(`unixTime`),_status)
+}
+    )
+    }
+    
+
+    @Throws(BindingException::class) fun `unwrapVaultKey`(`wrapKey`: kotlin.ByteArray, `wrapped`: kotlin.ByteArray, `vaultId`: kotlin.String): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_unwrap_vault_key(
+        FfiConverterByteArray.lower(`wrapKey`),FfiConverterByteArray.lower(`wrapped`),FfiConverterString.lower(`vaultId`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Verify an agent event signature against the pinned agent key.
+         */ fun `verifyAgentSignature`(`agentPubkeyB64`: kotlin.String, `message`: kotlin.ByteArray, `signatureB64`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_verify_agent_signature(
+        FfiConverterString.lower(`agentPubkeyB64`),FfiConverterByteArray.lower(`message`),FfiConverterString.lower(`signatureB64`),_status)
 }
     )
     }

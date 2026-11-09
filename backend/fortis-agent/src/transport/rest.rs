@@ -49,6 +49,9 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
         .route("/backup/logs", get(handle_logs))
         .route("/vault/entries", get(handle_vault_entries).post(handle_add_vault_entry))
         .route("/vault/unlock", post(handle_vault_unlock))
+        .route("/vault/init", post(handle_vault_init))
+        .route("/vault/lock", post(handle_vault_lock))
+        .route("/vault/status", get(handle_vault_status))
         .route_layer(middleware::from_fn(auth_middleware));
 
     let cors = CorsLayer::new()
@@ -186,64 +189,36 @@ async fn handle_logs() -> Result<String, StatusCode> {
     }
 }
 
+// ---- Vault (interim, on fortis-core v2) -------------------------------------
+
+use fortis_core::db::DbError;
+use fortis_core::vault::EntryInput;
+use crate::modules::vault::{self as vault_mod, VaultAccessError};
+
+fn vault_error(e: VaultAccessError) -> StatusCode {
+    match e {
+        VaultAccessError::Locked => StatusCode::LOCKED,
+        VaultAccessError::Db(DbError::NotFound) => StatusCode::NOT_FOUND,
+        VaultAccessError::Db(DbError::Validation(_)) => StatusCode::BAD_REQUEST,
+        VaultAccessError::Db(e) => {
+            log::error!("vault error: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
+}
+
 async fn handle_vault_entries() -> Result<Json<serde_json::Value>, StatusCode> {
-    if let Ok(db) = crate::modules::vault::get_db() {
-        if let Ok(entries) = db.get_entries() {
-            // Serialize to JSON, handling SecretString zeroization correctly
-            return Ok(Json(serde_json::to_value(entries).unwrap_or(json!([]))));
-        }
+    let list = vault_mod::with_db(|db| db.list()).map_err(vault_error)?;
+    if !list.corrupt.is_empty() {
+        log::error!("{} vault entries failed to decrypt", list.corrupt.len());
     }
-    
-    Err(StatusCode::INTERNAL_SERVER_ERROR)
+    let summaries: Vec<_> = list.entries.iter().map(|e| e.summary()).collect();
+    Ok(Json(json!(summaries)))
 }
 
-#[derive(Deserialize)]
-struct NewVaultEntryPayload {
-    title: String,
-    notes: String,
-    entry_type: String, // "Login", "CreditCard", "SecureNote"
-    username: Option<String>,
-    password: Option<String>,
-    totp_secret: Option<String>,
-}
-
-async fn handle_add_vault_entry(axum::Json(payload): axum::Json<NewVaultEntryPayload>) -> Result<Json<serde_json::Value>, StatusCode> {
-    if let Ok(db) = crate::modules::vault::get_db() {
-        // Map string to enum
-        let entry_type = match payload.entry_type.as_str() {
-            "Login" => fortis_core::vault::EntryType::Login { 
-                username: payload.username.unwrap_or_default(), 
-                password: fortis_core::vault::SecretString(zeroize::Zeroizing::new(payload.password.unwrap_or_default())),
-                url: None,
-                totp_secret: payload.totp_secret,
-            },
-            "CreditCard" => fortis_core::vault::EntryType::CreditCard { 
-                cardholder_name: "".to_string(),
-                card_number: fortis_core::vault::SecretString(zeroize::Zeroizing::new("".to_string())), 
-                expiration_month: 0,
-                expiration_year: 0,
-                cvv: fortis_core::vault::SecretString(zeroize::Zeroizing::new("".to_string())),
-            },
-            _ => fortis_core::vault::EntryType::SecureNote { 
-                content: fortis_core::vault::SecretString(zeroize::Zeroizing::new(payload.notes.clone())) 
-            }
-        };
-
-        let entry = fortis_core::vault::VaultEntry {
-            id: uuid::Uuid::new_v4(),
-            folder_id: None,
-            title: payload.title.clone(),
-            entry_type,
-            custom_fields: vec![],
-            notes: payload.notes,
-        };
-
-        if db.add_entry(&entry).is_ok() {
-            return Ok(Json(json!({ "status": "success" })));
-        }
-    }
-    
-    Err(StatusCode::INTERNAL_SERVER_ERROR)
+async fn handle_add_vault_entry(axum::Json(input): axum::Json<EntryInput>) -> Result<Json<serde_json::Value>, StatusCode> {
+    let entry = vault_mod::with_db(|db| db.insert(input, fortis_core::unix_now())).map_err(vault_error)?;
+    Ok(Json(json!({ "id": entry.id })))
 }
 
 #[derive(Deserialize)]
@@ -252,12 +227,41 @@ struct UnlockPayload {
 }
 
 async fn handle_vault_unlock(axum::Json(payload): axum::Json<UnlockPayload>) -> Result<Json<serde_json::Value>, StatusCode> {
-    match crate::modules::vault::unlock_vault(&payload.password) {
-        Ok(_) => Ok(Json(json!({ "status": "success" }))),
+    // Argon2id takes ~0.5 s of CPU; keep it off the async workers.
+    let res = tokio::task::spawn_blocking(move || vault_mod::unlock(&payload.password))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match res {
+        Ok(()) => Ok(Json(json!({ "state": "unlocked" }))),
+        Err(DbError::InvalidPassword) => Err(StatusCode::UNAUTHORIZED),
+        Err(DbError::Uninitialised) => Err(StatusCode::TOO_EARLY),
         Err(e) => {
-            log::error!("Unlock failed: {}", e);
-            Err(StatusCode::UNAUTHORIZED)
+            log::error!("unlock failed: {e}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
 
+async fn handle_vault_init(axum::Json(payload): axum::Json<UnlockPayload>) -> Result<Json<serde_json::Value>, StatusCode> {
+    let res = tokio::task::spawn_blocking(move || vault_mod::init(&payload.password))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match res {
+        Ok(()) => Ok(Json(json!({ "state": "unlocked" }))),
+        Err(DbError::AlreadyExists) => Err(StatusCode::CONFLICT),
+        Err(DbError::Validation(_)) => Err(StatusCode::BAD_REQUEST),
+        Err(e) => {
+            log::error!("init failed: {e}");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn handle_vault_lock() -> Json<serde_json::Value> {
+    vault_mod::lock();
+    Json(json!({ "state": "locked" }))
+}
+
+async fn handle_vault_status() -> Json<serde_json::Value> {
+    Json(json!({ "state": vault_mod::state() }))
+}

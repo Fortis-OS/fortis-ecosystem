@@ -1,15 +1,10 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
-use tokio::sync::Mutex;
 use log::{info, error};
 
-use fortis_core::db::Database;
-use fortis_core::vault::{VaultEntry, EntryType, SecretString};
-use uuid::Uuid;
+use fortis_core::vault::{EntryInput, EntryType, SecretString};
 
 pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let socket_path = "/tmp/fortis_agent.sock";
@@ -40,26 +35,16 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
                                 
                                 let response = if request.starts_with("ADD") {
                                     let title = request.trim_start_matches("ADD").trim().to_string();
-                                    
-                                    let new_entry = VaultEntry {
-                                        id: Uuid::new_v4(),
-                                        folder_id: None,
+                                    let input = EntryInput {
+                                        folder: None,
                                         title: title.clone(),
-                                        entry_type: EntryType::SecureNote { 
-                                            content: SecretString(zeroize::Zeroizing::new("Encrypted secret note via IPC".to_string()))
-                                        },
+                                        entry_type: EntryType::SecureNote { content: SecretString::default() },
                                         custom_fields: vec![],
-                                        notes: "Added via CLI".to_string(),
+                                        notes: SecretString::new("Added via CLI"),
                                     };
-                                    
-                                    match crate::modules::vault::get_db() {
-                                        Ok(db) => {
-                                            match db.add_entry(&new_entry) {
-                                                Ok(_) => format!("Success: Added entry '{}' to database.", title),
-                                                Err(e) => format!("Error: Failed to add entry: {}", e)
-                                            }
-                                        }
-                                        Err(e) => format!("Error: {}", e)
+                                    match crate::modules::vault::with_db(|db| db.insert(input, fortis_core::unix_now())) {
+                                        Ok(_) => format!("Success: Added entry '{}' to database.", title),
+                                        Err(e) => format!("Error: {}", e),
                                     }
                                 } else {
                                     format!("Processed unknown command: {}", request)
