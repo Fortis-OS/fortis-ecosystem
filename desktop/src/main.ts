@@ -135,23 +135,57 @@ async function fetchEntries() {
       throw new Error(`HTTP Error: ${response.status}`);
     }
   } catch (e) {
-    console.error("Failed to fetch entries via REST, falling back to mock", e);
-    // Fallback if REST fails (e.g., in pure browser mode or agent not running)
-    const mockItems = [
-      { id: '1', title: 'Google Account', entry_type: 'Login' },
-      { id: '2', title: 'Chase Sapphire', entry_type: 'CreditCard' },
-      { id: '3', title: 'Recovery Codes', entry_type: 'SecureNote' },
-    ];
-    allItems = mockItems;
+    console.error("Failed to fetch entries", e);
+    // Remove the mock fallback entirely as requested by "Remove Mock UI Logic"
+    allItems = [];
     applyFilters();
   }
 }
 
+function setupLogin() {
+  const loginForm = document.getElementById('login-form') as HTMLFormElement;
+  const loginError = document.getElementById('login-error') as HTMLDivElement;
+  
+  if (!loginForm) return;
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginError.style.display = 'none';
+    const passwordInput = document.getElementById('master-password') as HTMLInputElement;
+    const password = passwordInput.value;
+
+    try {
+      const apiKey: string = await invoke("get_api_key");
+      const response = await fetch("http://127.0.0.1:8023/api/v1/vault/unlock", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ password })
+      });
+      
+      if (response.ok) {
+        document.getElementById('login-overlay')!.style.display = 'none';
+        document.getElementById('app')!.style.display = 'flex';
+        fetchEntries();
+      } else {
+        loginError.textContent = "Invalid Master Password.";
+        loginError.style.display = 'block';
+      }
+    } catch (err) {
+      console.error("Login error", err);
+      loginError.textContent = "Could not connect to Fortis Agent.";
+      loginError.style.display = 'block';
+    }
+  });
+}
+
 // Initialize app UI
 window.addEventListener("DOMContentLoaded", () => {
+  setupLogin();
   setupSearch();
   setupNavigation();
-  fetchEntries();
   
   // Modal Logic
   const addBtn = document.getElementById('add-btn');

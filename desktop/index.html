@@ -14,7 +14,25 @@
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <div id="app" class="dark-theme">
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+      <div class="login-box glass-panel">
+        <div class="logo">
+          <i class="fa-solid fa-shield-halved"></i>
+          <span>FortisEncrypt</span>
+        </div>
+        <p>Enter your Master Password to unlock your vault.</p>
+        <form id="login-form">
+          <div class="form-group">
+            <input type="password" id="master-password" class="form-control" placeholder="Master Password" required autofocus />
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Unlock Vault</button>
+          <div id="login-error" class="error-text" style="color: #ff6b6b; margin-top: 10px; display: none;"></div>
+        </form>
+      </div>
+    </div>
+
+    <div id="app" class="dark-theme" style="display: none;">
       
       <!-- Sidebar Navigation -->
       <aside class="sidebar">
@@ -42,7 +60,6 @@
         
         <div class="sidebar-footer">
           <button class="settings-btn"><i class="fa-solid fa-gear"></i> Settings</button>
-          <div class="sync-status online"><i class="fa-solid fa-cloud"></i> Synced</div>
         </div>
       </aside>
 
