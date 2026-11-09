@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.fortismobile"
+    namespace = "com.fortis.mobile"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -12,7 +12,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.fortismobile"
+        applicationId = "com.fortis.mobile"
         minSdk = 28
         targetSdk = 36
         versionCode = 1

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.fortismobile">
+    package="com.fortis.mobile">
 
     <queries>
         <package android:name="com.tailscale.ipn" />
@@ -61,8 +61,8 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.example.fortismobile.ACTION_LOCK" />
-                <action android:name="com.example.fortismobile.ACTION_BACKUP" />
+                <action android:name="com.fortis.mobile.ACTION_LOCK" />
+                <action android:name="com.fortis.mobile.ACTION_BACKUP" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
