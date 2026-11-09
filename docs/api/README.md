@@ -1,429 +1,662 @@
 # Fortis Agent — API Reference
 
-**Base URL:** `http://127.0.0.1:8023/api/v1`
+This is the **wire specification** for `fortis-agent`. Security requirements referenced as §n are in the [Security Model](../security/README.md).
+
+The agent exposes three interfaces:
+
+| Interface | Address | Clients | Auth |
+|---|---|---|---|
+| **Loopback REST** (`L`) | `http://127.0.0.1:8023/api/v1` | fortis-desktop (Rust side) | `Authorization: Bearer <agent.token>` (§5.2) |
+| **Tailnet REST** (`T`) | `http://<tailscale-ip>:8023/api/v1` | fortis-mobile | Signed device request headers (§5.3) |
+| **IPC socket** | `$XDG_RUNTIME_DIR/fortis/agent.sock` | fortis-cli, pam_fortis | Peer UID (§7.2) |
+
+There is **no gRPC interface**.
 
 ---
 
-## Authentication
+## Conventions
 
-All authenticated endpoints require the `Authorization` header:
+- JSON bodies, `Content-Type: application/json`, UTF-8. Max request body 1 MiB except `files/drop`.
+- Timestamps are unix seconds (integer). IDs are UUID v4 strings. Binary values are base64 (standard, padded).
+- **Listener column** in each table: `L` = loopback only, `T` = tailnet only, `L T` = both. A request on the wrong listener gets `404`.
+- **State column:** `any`, or `unlocked` (returns `423` when the vault is locked).
 
-```
-Authorization: Bearer <FORTIS_AGENT_KEY>
-```
+### Errors
 
-The API key is set via the `FORTIS_AGENT_KEY` environment variable when starting the agent. If the variable is not set, the agent returns `500 Internal Server Error` for all authenticated requests.
+Every non-2xx response has this body:
 
-Unauthenticated requests to protected endpoints return `401 Unauthorized`.
-
----
-
-## REST API — Authenticated Endpoints
-
-### GET `/telemetry`
-
-Returns real-time system telemetry collected via shell commands (`top`, `free`, `df`, `sensors`).
-
-**Response:**
 ```json
-{
-  "cpu": "12.5%",
-  "mem_total": "16384 MB",
-  "mem_used": "8192 MB",
-  "swap_total": "8192 MB",
-  "swap_used": "1024 MB",
-  "storage_total": "500G",
-  "storage_used": "200G",
-  "temp": "52.0°C",
-  "uptime": "up 3 hours, 42 minutes"
-}
+{ "error": { "code": "vault_locked", "message": "Vault is locked" } }
 ```
 
-> **Note:** Temperature reading tries `sensors` output for `Tctl` first, then falls back to `CPU:` label.
-
----
-
-### GET `/capabilities`
-
-Returns the agent's enabled feature flags.
-
-**Response:**
-```json
-{
-  "telemetry": true,
-  "actions": true,
-  "files": true,
-  "vault": true,
-  "biometric_auth": true,
-  "backup": true,
-  "terminal": true,
-  "clipboard": true,
-  "webcam": true,
-  "media": true
-}
-```
-
----
-
-### POST `/clipboard`
-
-Copies text to the system clipboard. Uses `wl-copy` on Wayland or `xclip -selection clipboard` on X11.
-
-**Request Body:** Raw text bytes (not JSON).
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Clipboard updated"
-}
-```
-
----
-
-### POST `/action`
-
-Executes a system action.
-
-**Request Body:**
-```json
-{
-  "action": "lock_screen"
-}
-```
-
-**Available Actions:**
-
-| Action | Implementation | Notes |
+| HTTP | `code` | Meaning |
 |---|---|---|
-| `lock_screen` | `loginctl lock-session` | |
-| `run_backup` | Spawns `fortis-backup.sh` | Path is hardcoded in source |
-| `media_play_pause` | `playerctl play-pause` | Requires `playerctl` |
-| `media_next` | `playerctl next` | |
-| `media_prev` | `playerctl previous` | |
-| `volume_up` | `amixer -D pulse sset Master 5%+` | Returns current volume |
-| `volume_down` | `amixer -D pulse sset Master 5%-` | Returns current volume |
-| `suspend` | `systemctl suspend` | |
-| `shutdown` | `systemctl poweroff` | |
+| 400 | `bad_request` | Malformed JSON, missing or invalid field |
+| 401 | `unauthorized` | Missing/invalid token, bad signature, stale timestamp, replayed nonce, unknown device |
+| 401 | `invalid_password` | Wrong master password (same response for any unlock failure) |
+| 403 | `forbidden` | Path outside file roots, bad `Host`/`Origin` |
+| 404 | `not_found` | Unknown route, entry, file, or device |
+| 409 | `conflict` | Vault already initialised; sync version conflict |
+| 413 | `too_large` | Body or upload over the limit |
+| 423 | `vault_locked` | Vault is locked |
+| 425 | `vault_uninitialised` | No vault yet — call `POST /vault/init` |
+| 429 | `rate_limited` | Unlock back-off or pairing attempts exhausted; `Retry-After` header set |
+| 500 | `internal` | Unexpected error (details only in the agent log) |
+| 503 | `unavailable` | Required tool missing (e.g. no `playerctl`) |
 
-**Response:**
-```json
-{
-  "status": "success",
-  "action": "lock_screen"
-}
+### Authentication headers
+
+**Loopback (`L`):**
+
+```http
+Authorization: Bearer 3f9c…(64 hex chars)
+Host: 127.0.0.1:8023
 ```
 
-For volume actions, the response includes the current volume level:
-```json
-{
-  "status": "success",
-  "action": "volume_up",
-  "volume": "75%"
-}
+**Tailnet (`T`):**
+
+```http
+X-Fortis-Device: 0b7c2f4e-…
+X-Fortis-Timestamp: 1731110400
+X-Fortis-Nonce: 9f2c1a…(32 hex chars)
+X-Fortis-Signature: MEUCIQ…(base64 DER)
 ```
 
-**Errors:**
-- `400 Bad Request` — Unknown action string.
+Signature input (security §5.3):
 
----
-
-### GET `/media`
-
-Returns currently playing media metadata via `playerctl metadata`.
-
-**Response:**
-```json
-{
-  "title": "Bohemian Rhapsody",
-  "artist": "Queen",
-  "album": "A Night at the Opera",
-  "position": "120000000",
-  "length": "354000000",
-  "status": "Playing",
-  "player": "spotify"
-}
-```
-
-**Errors:**
-- `404 Not Found` — No active media player detected.
-
----
-
-### POST `/files/drop`
-
-Upload a file via multipart form data. Files are saved to `~/Downloads/FortisMobileDrop/`.
-
-**Request:** `Content-Type: multipart/form-data` with a field named `file`.
-
-**Response:**
-```json
-{
-  "status": "success",
-  "file": "document.pdf"
-}
-```
-
-**Errors:**
-- `400 Bad Request` — No `file` field found in the multipart body.
-- `500 Internal Server Error` — Failed to write file to disk.
-
----
-
-### POST `/files/list`
-
-List contents of a directory on the host machine.
-
-**Request Body:**
-```json
-{
-  "path": "/home/user/Documents"
-}
-```
-
-If `path` is `null` or empty, defaults to `$HOME`.
-
-**Response:**
-```json
-{
-  "path": "/home/user/Documents",
-  "files": [
-    { "name": "report.pdf", "size": 1234567, "is_dir": false },
-    { "name": "photos", "size": 0, "is_dir": true }
-  ]
-}
+```text
+fortis/v2/request
+<METHOD>
+<path and query, e.g. /api/v1/sync/pull?since=42>
+<timestamp>
+<nonce>
+<hex SHA-256 of the raw body; SHA-256 of empty string for GET>
 ```
 
 ---
 
-### GET `/files/download?path=<filepath>`
+## 1. Vault
 
-Download a file from the host. Returns the file as a binary stream with a `Content-Disposition: attachment` header.
+| Method & path | Listener | State | Purpose |
+|---|---|---|---|
+| `GET /vault/status` | L T | any | Locked / unlocked / uninitialised |
+| `POST /vault/init` | L | uninitialised | Create a new vault |
+| `POST /vault/unlock` | L | locked | Unlock with master password |
+| `POST /vault/lock` | L T | any | Lock now |
+| `POST /vault/change-password` | L | unlocked | Change master password |
+| `GET /vault/entries` | L | unlocked | List entry summaries |
+| `GET /vault/entries/{id}` | L | unlocked | Full entry including secrets |
+| `POST /vault/entries` | L | unlocked | Create entry |
+| `PUT /vault/entries/{id}` | L | unlocked | Replace entry |
+| `DELETE /vault/entries/{id}` | L | unlocked | Delete entry (tombstone) |
+| `GET /vault/entries/{id}/totp` | L | unlocked | Current TOTP code |
 
-**Query Parameter:** `path` — Absolute path to the file.
+### `GET /vault/status`
 
-**Errors:**
-- `404 Not Found` — File does not exist or is a directory.
+```json
+{ "state": "unlocked", "auto_lock_minutes": 15, "locks_in_secs": 742 }
+```
 
----
+`state` is `"uninitialised"`, `"locked"` or `"unlocked"`. `locks_in_secs` is `null` unless unlocked.
 
-### GET `/backup/logs`
+### `POST /vault/init`
 
-Returns the last 50 lines of the backup mirror log at `/mnt/FortisVault/Logs/mirror/mirror.log` as plain text.
+```json
+{ "password": "correct horse battery staple" }
+```
 
-**Errors:**
-- `500 Internal Server Error` — Log file not found or unreadable.
+Password must be at least **12** characters. Creates `vault.meta.json` (random salt) and `vault.db`, leaves the vault **unlocked**. → `201 {"state":"unlocked"}`. `409 conflict` if a vault exists.
 
----
+### `POST /vault/unlock`
 
-### GET `/vault/entries`
+```json
+{ "password": "…" }
+```
 
-Returns all vault entries from the SQLCipher database at `~/.local/share/fortis/vault.db`.
+→ `200 {"state":"unlocked"}`. Wrong password → `401 invalid_password`. During back-off → `429 rate_limited` with `Retry-After`.
 
-> **Note:** The database is opened with a hardcoded development key (`dev_master_key`) in the current implementation.
+### `POST /vault/lock`
 
-**Response:**
+No body. → `200 {"state":"locked"}`.
+
+### `POST /vault/change-password`
+
+```json
+{ "current_password": "…", "new_password": "…" }
+```
+
+Re-wraps the vault key and rekeys SQLCipher (security §3.2). Paired phones must re-bootstrap (they get `409` with code `conflict` and `message: "vault_key_rewrapped"` on next sync). → `200`.
+
+### `GET /vault/entries`
+
+Optional query: `?q=<text>` (case-insensitive match on title, username, URL, folder), `?type=Login|CreditCard|Identity|SecureNote|Totp`.
+
+Returns summaries only — **no secrets**:
+
 ```json
 [
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
-    "folder_id": null,
     "title": "GitHub",
-    "entry_type": {
-      "Login": {
-        "username": "user@example.com",
-        "password": "s3cur3pass",
-        "url": "https://github.com",
-        "totp_secret": null
-      }
-    },
-    "custom_fields": [],
-    "notes": "My GitHub account"
+    "type": "Login",
+    "folder": "Work",
+    "username": "user@example.com",
+    "urls": ["https://github.com"],
+    "has_totp": true,
+    "updated_at": 1731110400
   }
 ]
 ```
 
----
+### `GET /vault/entries/{id}`
 
-### POST `/vault/entries`
+Returns the full `VaultEntry` (see [Architecture §4.1](../architecture/README.md#41-vault-entry-plaintext-inside-the-ciphertext)):
 
-Create a new vault entry.
-
-**Request Body:**
 ```json
 {
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "folder": "Work",
   "title": "GitHub",
-  "notes": "Work account",
-  "entry_type": "Login",
-  "username": "user@example.com",
-  "password": "s3cur3pass",
-  "totp_secret": "JBSWY3DPEHPK3PXP"
+  "entry_type": {
+    "Login": {
+      "username": "user@example.com",
+      "password": "s3cur3pass",
+      "urls": ["https://github.com"],
+      "totp": { "secret_base32": "JBSWY3DPEHPK3PXP", "digits": 6, "period": 30, "algorithm": "Sha1" }
+    }
+  },
+  "custom_fields": [],
+  "notes": "",
+  "created_at": 1731100000,
+  "updated_at": 1731110400
 }
 ```
 
-**Entry Types:**
+### `POST /vault/entries` / `PUT /vault/entries/{id}`
 
-| Type | Additional Fields |
+Body: a `VaultEntry` **without** `id`, `created_at`, `updated_at` (the agent sets them). Every variant field must be present; optional fields may be `null`. Unknown fields → `400`.
+
+→ `201 {"id": "…"}` / `200 {"id": "…"}`.
+
+### `DELETE /vault/entries/{id}`
+
+→ `200`. The row becomes a tombstone so the deletion syncs.
+
+### `GET /vault/entries/{id}/totp`
+
+→ `200 {"code": "492039", "remaining_secs": 17}`. `404` if the entry has no TOTP.
+
+---
+
+## 2. Sync (phone)
+
+All tailnet-only, all need `unlocked`.
+
+| Method & path | Purpose |
 |---|---|
-| `Login` | `username` (optional), `password` (optional), `totp_secret` (optional) |
-| `CreditCard` | Created with empty placeholder fields |
-| `SecureNote` (default) | `notes` field is used as the secure content |
+| `GET /sync/bootstrap` | Material for the phone to derive its own copy of the vault key |
+| `GET /sync/pull?since=<seq>` | Rows changed after `seq` |
+| `POST /sync/push` | Upload local changes |
 
-**Response:**
+### `GET /sync/bootstrap`
+
 ```json
 {
-  "status": "success"
+  "meta": { "format_version": 2, "kdf": { "alg": "argon2id", "m_kib": 65536, "t": 3, "p": 4, "salt": "…" }, "vault_id": "…" },
+  "wrapped_vault_key": "base64(nonce ‖ ciphertext ‖ tag)",
+  "seq": 0
 }
 ```
+
+The plaintext vault key is never sent. The phone needs the master password to use this (security §6).
+
+### `GET /sync/pull?since=<seq>`
+
+```json
+{
+  "seq": 57,
+  "rows": [
+    { "id": "…", "version": 4, "updated_at": 1731110400, "deleted": false, "encrypted_data": "base64" },
+    { "id": "…", "version": 2, "updated_at": 1731110000, "deleted": true,  "encrypted_data": "" }
+  ]
+}
+```
+
+At most 500 rows per call; if `rows.length == 500`, call again with the returned `seq`.
+
+### `POST /sync/push`
+
+```json
+{
+  "changes": [
+    { "id": "…", "base_version": 3, "version": 4, "updated_at": 1731110400, "deleted": false, "encrypted_data": "base64" }
+  ]
+}
+```
+
+Rules, applied per row:
+
+1. `version` **must** equal `base_version + 1`. A new entry has `base_version: 0`.
+2. If the stored version equals `base_version` (or the row doesn't exist and `base_version` is 0), the agent checks the blob decrypts with AAD (`entry_id`, `version`), stores it, and assigns the next `seq`. → accepted.
+3. Otherwise the row is a **conflict**: the agent returns its current row unchanged.
+
+```json
+{
+  "seq": 58,
+  "accepted": ["…id…"],
+  "conflicts": [
+    { "id": "…", "version": 5, "updated_at": 1731110500, "deleted": false, "encrypted_data": "base64" }
+  ]
+}
+```
+
+**Conflict resolution (client side):** the copy with the larger `updated_at` wins. If the phone's copy wins, it re-encrypts with `version = server.version + 1` and pushes again with `base_version = server.version`. Otherwise it adopts the server row.
 
 ---
 
-## REST API — Public Endpoints (No Authentication)
+## 3. Pairing and Devices
 
-### POST `/pair`
+| Method & path | Listener | Auth | Purpose |
+|---|---|---|---|
+| `POST /pair` | T | **none** (pairing code) | Pair a phone |
+| `GET /devices` | L | bearer | List paired phones |
+| `DELETE /devices/{id}` | L | bearer | Revoke a phone |
 
-Accept a device pairing request. Validates the 6-digit code against the currently active pairing code (generated via `fortis-cli pair` or the IPC `PAIR_START` command).
+### `POST /pair`
 
-**Request Body:**
+Only accepted while a pairing session is open (started by `fortis pair`). This is the only unauthenticated endpoint.
+
 ```json
 {
-  "code": "482-916",
-  "public_key": "hex_encoded_ed25519_public_key"
+  "code": "7KQ2-M9XD-4H",
+  "device_name": "Pixel 8",
+  "request_pubkey": "base64 SEC1 uncompressed P-256",
+  "approval_pubkey": "base64 SEC1 uncompressed P-256"
 }
 ```
 
-On success, the device's public key is stored in `~/.config/fortis/paired_devices.json`.
+The code is compared with dashes removed, case-insensitively, in constant time.
 
-**Success Response:**
+→ `200`:
+
 ```json
-{
-  "status": "success",
-  "message": "Paired successfully."
-}
+{ "device_id": "0b7c2f4e-…", "agent_pubkey": "base64 SEC1 P-256", "agent_name": "laptop-hostname" }
 ```
 
-**Errors:**
-- `401 Unauthorized` — Code is invalid, expired, or no active pairing session.
+No open session, expired, or wrong code → `401`. Fifth wrong attempt closes the session → `429`.
+
+### `GET /devices`
+
+```json
+[
+  {
+    "device_id": "0b7c2f4e-…",
+    "name": "Pixel 8",
+    "paired_at": 1731100000,
+    "last_seen": 1731110400,
+    "online": true,
+    "request_key_fp": "a1b2c3d4e5f60718",
+    "approval_key_fp": "99aa88bb77cc66dd"
+  }
+]
+```
+
+`*_fp` = first 16 hex chars of SHA-256 of the public key.
+
+### `DELETE /devices/{id}`
+
+Removes the device and closes its event stream. → `200`. Reminder in response: `{"pam_reenroll_required": true}` if the device is listed in `/etc/fortis/pam/<user>.json`.
 
 ---
 
-### POST `/auth/unlock`
+## 4. Sudo Approvals
 
-Request biometric unlock. Used by the `fortis-lock` browser extension. The agent relays a biometric challenge to the paired mobile device via gRPC.
+### Events stream — `GET /events` (T, WebSocket)
 
-**Request Body:**
+The phone opens a WebSocket (signed upgrade request). The agent sends JSON messages, each signed with the agent key:
+
 ```json
-{
-  "domain": "reddit.com"
-}
+{ "msg": { "type": "sudo_request", "...": "..." }, "agent_sig": "base64 DER over UTF-8 JSON of msg" }
 ```
 
-**Success Response (biometric approved):**
-```json
-{
-  "status": "success"
-}
-```
-
-**Errors:**
-- `401 Unauthorized` — Biometric authentication was denied or failed.
-
-> **Note (current behavior):** If the gRPC connection to the mobile device fails, the agent returns a mock `AUTH_SUCCESS` for development purposes. This will be removed in production.
-
----
-
-## IPC Protocol (Unix Domain Socket)
-
-**Socket Path:** `/tmp/fortis_agent.sock`
-**Permissions:** `0600` (owner-only read/write)
-
-The agent listens for text-based commands on the Unix socket. Each connection can send multiple commands.
-
-| IPC Command | Description | Notes |
+| `type` | Fields | Meaning |
 |---|---|---|
-| `ADD <title>` | Create a SecureNote vault entry with the given title | Content: `"Encrypted secret note via IPC"` |
-| `GET` | List all vault entries | Returns debug-formatted entry list |
-| `SYNC` | Start P2P sync | **Stub** — returns static message |
-| `AUTH_CHALLENGE` | Send biometric auth challenge to paired mobile | Relays via gRPC; mock fallback in dev |
-| `PAIR_START` | Generate a 6-digit pairing code | Code format: `XXX-XXX` |
+| `hello` | `agent_name`, `vault_state` | Sent on connect |
+| `sudo_request` | `request_id`, `nonce`, `issued_at`, `user`, `host`, `service`, `tty`, `expires_at` | Ask the user to approve |
+| `sudo_cancelled` | `request_id`, `reason` (`timeout` \| `answered_elsewhere` \| `pam_closed`) | Dismiss the prompt |
+| `vault_state` | `state` | Vault locked/unlocked on the laptop |
+| `ping` | `t` | Every 25 s; phone replies with `{"type":"pong","t":…}` |
 
-> **Note:** The IPC server initializes its own database connection and schema on startup, independent of the REST server.
+The phone verifies `agent_sig` against the agent key it pinned at pairing and drops anything that fails.
 
-**Example (using socat):**
-```bash
-echo "ADD My Secret" | socat - UNIX-CONNECT:/tmp/fortis_agent.sock
-echo "GET" | socat - UNIX-CONNECT:/tmp/fortis_agent.sock
+### `POST /auth/respond` (T)
+
+```json
+{
+  "request_id": "hex 16 bytes",
+  "decision": "approve",
+  "signature": "base64 DER ECDSA P-256 by the approval key over the canonical approval bytes"
+}
 ```
+
+Canonical approval bytes are defined in security §4.4. The agent does not need to trust this signature — it relays it to `pam_fortis`, which verifies it — but it **does** verify it as well and returns `401` on failure so the phone can show an error.
+
+→ `200 {"relayed": true}`; `404` if the request expired or was already answered.
 
 ---
 
-## gRPC Services
+## 5. Laptop Remote
 
-**Port:** `50051` (default in config)
+| Method & path | Listener | State | Purpose |
+|---|---|---|---|
+| `GET /telemetry` | L T | any | System metrics |
+| `GET /capabilities` | L T | any | What this laptop can actually do |
+| `POST /actions` | L T | any | Run a system action |
+| `GET /media` | L T | any | Now playing |
+| `POST /clipboard` | L T | any | Set the laptop clipboard |
+| `GET /files/roots` | L T | any | Allowed browse roots |
+| `GET /files/list?path=` | L T | any | List a directory |
+| `GET /files/download?path=` | L T | any | Download a file |
+| `POST /files/drop` | L T | any | Upload a file to the laptop |
+| `GET /backup/logs?lines=` | L T | any | Tail of the backup log |
+| `POST /tools/generate-password` | L T | any | Generate a password |
 
-> **⚠️ Current Status:** The gRPC transport server in `fortis-agent` is a **stub** — it starts but performs no operations. The gRPC service definitions exist in `fortis-sync` and the client code exists in `fortis-agent/src/modules/auth.rs`, but the server-side listener is not yet implemented.
+### `GET /telemetry`
 
-### Proto Definitions
+Read from `/proc` and `/sys`. Numbers, not formatted strings:
 
-The protobuf file is located at `fortis-sync/proto/sync.proto` within the [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) repository.
-
-#### SyncService
-
-```protobuf
-service SyncService {
-    rpc Handshake (DeviceAuth) returns (Challenge);
-    rpc ExchangeClocks (VectorClock) returns (Delta);
-    rpc PushEntries (EncryptedBatch) returns (Ack);
-    rpc PullEntries (SinceTimestamp) returns (EncryptedBatch);
+```json
+{
+  "cpu_percent": 12.5,
+  "mem_total_mb": 15872,
+  "mem_used_mb": 8120,
+  "swap_total_mb": 8191,
+  "swap_used_mb": 1024,
+  "disk_total_bytes": 512110190592,
+  "disk_used_bytes": 214748364800,
+  "temp_c": 52.0,
+  "uptime_secs": 13320,
+  "hostname": "laptop"
 }
 ```
 
-#### FortisAuth
+`temp_c` is `null` if no sensor is found. `cpu_percent` is measured over a 200 ms window.
 
-Used for biometric authentication relay between agent and mobile.
+### `GET /capabilities`
 
-```protobuf
-service FortisAuth {
-    rpc RequestBiometricAuth (BiometricAuthRequest) returns (BiometricAuthResponse);
-}
+Reflects the real system, detected at start-up and refreshed every 60 s:
 
-message BiometricAuthRequest {
-    string nonce = 1;
-    uint64 timestamp = 2;
-    string device_name = 3;
-    string requested_action = 4;
-}
-
-message BiometricAuthResponse {
-    bool approved = 1;
-    string signature = 2;  // Hex-encoded Ed25519 signature
+```json
+{
+  "vault_state": "locked",
+  "tailnet": true,
+  "sudo_approval": true,
+  "clipboard": "wl-copy",
+  "media": true,
+  "volume": "wpctl",
+  "backup": true,
+  "notify": true,
+  "input": "ydotool",
+  "webcam": false
 }
 ```
+
+- `sudo_approval`: `/etc/fortis/pam/<user>.json` exists and lists at least one device.
+- `clipboard`: `"wl-copy"`, `"xclip"` or `null`.
+- `notify`: `notify-send` is available.
+- `input`: `"xdotool"`, `"ydotool"` or `null` (also `null` when `input.enabled = false`).
+- `webcam`: `webcam.enabled = true`, `ffmpeg` present and a `v4l2loopback` device exists.
+
+The phone hides screens for features that are `false`/`null`.
+
+### `POST /actions`
+
+```json
+{ "action": "lock_screen" }
+```
+
+| `action` | Runs | Response extras |
+|---|---|---|
+| `lock_screen` | `loginctl lock-session` | — |
+| `suspend` | `systemctl suspend` | — |
+| `shutdown` | `systemctl poweroff` | — |
+| `media_play_pause` | `playerctl play-pause` | — |
+| `media_next` | `playerctl next` | — |
+| `media_prev` | `playerctl previous` | — |
+| `volume_up` / `volume_down` | `wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+/5%-` (fallback `pactl`) | `volume_percent` |
+| `volume_mute` | `wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle` | `muted` |
+| `run_backup` | `backup.script` from config, detached | `started_at` |
+
+Commands run with fixed argument vectors and are awaited (except `run_backup`, `suspend`, `shutdown`). A non-zero exit → `500`. Missing tool → `503`. Unknown action → `400`.
+
+```json
+{ "action": "volume_up", "ok": true, "volume_percent": 75 }
+```
+
+### `GET /media`
+
+```json
+{ "title": "…", "artist": "…", "album": "…", "position_us": 120000000, "length_us": 354000000, "status": "Playing", "player": "spotify" }
+```
+
+`404` if no player is active.
+
+### `POST /clipboard`
+
+```json
+{ "text": "…" }
+```
+
+Max 1 MiB. → `200`.
+
+### `GET /files/roots`
+
+```json
+{ "roots": ["/home/user/Downloads", "/home/user/Documents"] }
+```
+
+### `GET /files/list?path=<absolute path>`
+
+`path` defaults to the first root. Path is canonicalised and must be inside a root (security §7.3), otherwise `403`. Hidden entries are omitted.
+
+```json
+{
+  "path": "/home/user/Documents",
+  "entries": [
+    { "name": "report.pdf", "is_dir": false, "size": 1234567, "modified": 1731100000 },
+    { "name": "photos", "is_dir": true, "size": 0, "modified": 1731000000 }
+  ]
+}
+```
+
+### `GET /files/download?path=<absolute path>`
+
+Same confinement rules. Streams the file with `Content-Type: application/octet-stream` and `Content-Disposition: attachment; filename*=UTF-8''<encoded name>`. Directories → `400`.
+
+### `POST /files/drop?dest=drop|camera`
+
+`multipart/form-data` with one field `file`. `dest` defaults to `drop`:
+
+| `dest` | Folder | Used by |
+|---|---|---|
+| `drop` | `~/Downloads/FortisMobileDrop/` | "Send file to laptop" |
+| `camera` | `files.camera_dir` (default `~/Pictures/FortisCameraRoll/`) | Camera-roll sync |
+
+Saved with a sanitised, de-duplicated name (security §7.3). Max `files.max_upload_mb`.
+
+```json
+{ "saved_as": "document (1).pdf", "size": 48213 }
+```
+
+### `GET /backup/logs?lines=50`
+
+`lines` 1–500, default 50. → `200 text/plain`. `404` if the log doesn't exist.
+
+### `POST /tools/generate-password`
+
+```json
+{ "length": 24, "uppercase": true, "numbers": true, "symbols": true }
+```
+
+`length` 8–128. Uses `OsRng`; guarantees at least one character from each enabled class. → `{"password": "…"}`.
 
 ---
 
-## Communication Summary
+## 5b. Phone Features
 
-```mermaid
-sequenceDiagram
-    participant Desktop as fortis-desktop
-    participant Lock as fortis-lock
-    participant CLI as fortis-cli
-    participant Agent as fortis-agent
-    participant Mobile as fortis-mobile
-    participant DB as vault.db
+| Method & path | Listener | Purpose |
+|---|---|---|
+| `POST /notify` | T | Show a mirrored phone notification on the laptop |
+| `POST /sessions` | T | Start a fingerprint-confirmed session |
+| `POST /sessions/{id}/confirm` | T | Confirm it with the approval key |
+| `DELETE /sessions/{id}` | T | End it |
+| `GET /input?session=<id>` | T | Remote keyboard/mouse (WebSocket) |
+| `POST /webcam/start` | T | Start pulling the phone camera into `v4l2loopback` |
+| `POST /webcam/stop` | T | Stop it |
 
-    Desktop->>Agent: GET /api/v1/vault/entries (Bearer token)
-    Agent->>DB: db.get_entries()
-    DB-->>Agent: Vec<VaultEntry>
-    Agent-->>Desktop: 200 JSON
+### `POST /notify`
 
-    CLI->>Agent: "ADD My Note" (Unix Socket)
-    Agent->>DB: db.add_entry(&entry)
-    Agent-->>CLI: "Success: Added entry"
-
-    Lock->>Agent: POST /api/v1/auth/unlock (no auth)
-    Agent->>Mobile: gRPC RequestBiometricAuth
-    Mobile-->>Agent: BiometricAuthResponse (signature)
-    Agent-->>Lock: 200 { status: success }
+```json
+{ "app": "WhatsApp", "title": "Mum", "body": "Call me when you're free" }
 ```
+
+Shown with `notify-send` (security §7.4). Rate-limited to 1/s per device (`429` beyond). `503` if `notify-send` is missing.
+
+### `POST /sessions`
+
+```json
+{ "kind": "input" }
+```
+
+→ `200`:
+
+```json
+{ "session_id": "hex16", "nonce": "hex32", "issued_at": 1731110400, "expires_at": 1731110460 }
+```
+
+`403` if the feature is disabled in `agent.toml`.
+
+### `POST /sessions/{id}/confirm`
+
+```json
+{ "signature": "base64 DER by the approval key over the session bytes (security §5.6)" }
+```
+
+→ `200 {"active": true, "max_duration_secs": 1800, "idle_timeout_secs": 120}`. Bad signature or expired → `401`.
+
+### `GET /input?session=<id>` (WebSocket)
+
+Signed upgrade request, plus an active, confirmed `input` session owned by the same device. Client → agent messages:
+
+```json
+{ "type": "mousemove",  "dx": 12.5, "dy": -3 }
+{ "type": "mousedown",  "button": 1 }
+{ "type": "mouseup",    "button": 1 }
+{ "type": "mouseclick", "button": 3 }
+{ "type": "scroll",     "dx": 0, "dy": -2 }
+{ "type": "key",        "key": "Return" }
+{ "type": "type",       "text": "hello" }
+```
+
+Limits and allowed `key` names: security §7.5. Invalid messages are dropped; the agent sends `{"type":"error","code":"bad_request"}` and keeps the connection. The connection closes when the session ends.
+
+### `POST /webcam/start`
+
+```json
+{ "port": 48213, "token": "hex32" }
+```
+
+The agent takes the phone's address from the Tailscale peer address of this request, pulls `http://<phone>:<port>/<token>/stream` with `ffmpeg` into the configured `v4l2loopback` device, and returns `200 {"device": "/dev/video10"}`. Only one stream at a time (`409` otherwise). `403` if disabled.
+
+### `POST /webcam/stop`
+
+→ `200`. Also stops automatically after 1 hour or if the stream drops for 10 s.
+
+---
+
+## 6. IPC Protocol
+
+**Socket:** `$XDG_RUNTIME_DIR/fortis/agent.sock` (e.g. `/run/user/1000/fortis/agent.sock`), mode `0600`.
+
+**Framing:** newline-delimited JSON. One request per line; one or more responses per line, matched by `id`. Max 64 KiB per line. A connection may send several requests.
+
+Request:
+
+```json
+{ "id": 1, "cmd": "status", "args": {} }
+```
+
+Response:
+
+```json
+{ "id": 1, "ok": true, "data": { "state": "locked" } }
+{ "id": 2, "ok": false, "error": { "code": "vault_locked", "message": "Vault is locked" } }
+```
+
+Error codes are the same as REST.
+
+**Who may call what:** the agent's own UID may call every command except `auth_request`. UID 0 may call **only** `auth_request` and `pam_devices`. Any other UID is disconnected.
+
+| `cmd` | `args` | Needs | `data` |
+|---|---|---|---|
+| `status` | — | any | `{state, locks_in_secs, tailnet_ip, paired_devices}` |
+| `init` | `{password}` | uninitialised | `{state}` |
+| `unlock` | `{password}` | locked | `{state}` |
+| `lock` | — | any | `{state}` |
+| `list` | `{query?, type?}` | unlocked | entry summaries (as REST) |
+| `get` | `{id}` or `{title}` | unlocked | full entry; `{title}` must match exactly one entry, else `409` with candidates |
+| `add` | `{entry}` | unlocked | `{id}` |
+| `edit` | `{id, entry}` | unlocked | `{id}` |
+| `delete` | `{id}` | unlocked | `{}` |
+| `totp` | `{id}` | unlocked | `{code, remaining_secs}` |
+| `generate` | `{length, uppercase, numbers, symbols}` | any | `{password}` |
+| `pair_start` | — | any | `{code, qr_uri, expires_at}`; a later line `{id, ok, data:{event:"paired", device}}` is sent on the same connection when pairing completes |
+| `devices_list` | — | any | as `GET /devices` |
+| `devices_revoke` | `{device_id}` | any | `{pam_reenroll_required}` |
+| `pam_devices` | `{user}` | any (UID 0 or own) | `[{device_id, name, approval_pubkey, approval_key_fp}]` |
+| `auth_request` | see below | any (UID 0 only) | see below |
+| `backup_run` | — | any | `{started_at}` |
+| `sessions_list` | — | any | active fingerprint-confirmed sessions `[{session_id, device_id, kind, started_at}]` |
+| `sessions_end` | `{session_id?}` | any | ends one session, or all if omitted |
+
+### `auth_request` (pam_fortis only)
+
+```json
+{ "id": 1, "cmd": "auth_request", "args": {
+    "request_id": "hex16", "nonce": "hex32", "issued_at": 1731110400,
+    "user": "ganesh", "host": "laptop", "service": "sudo", "tty": "pts/3"
+} }
+```
+
+The agent pushes `sudo_request` to every online paired phone and replies **once**, either:
+
+```json
+{ "id": 1, "ok": true, "data": { "request_id": "hex16", "device_id": "…", "decision": "approve", "signature": "base64 DER" } }
+```
+
+or, after `auth.approval_timeout_secs`, or if no phone is online:
+
+```json
+{ "id": 1, "ok": false, "error": { "code": "unavailable", "message": "no phone online" } }
+```
+
+If the PAM side closes the connection first (user pressed Ctrl-C), the agent sends `sudo_cancelled` to the phones.
+
+---
+
+## 7. Endpoint Summary
+
+| Path | L | T | Locked OK |
+|---|:-:|:-:|:-:|
+| `/vault/status` | ✓ | ✓ | ✓ |
+| `/vault/init`, `/vault/unlock` | ✓ | | ✓ |
+| `/vault/lock` | ✓ | ✓ | ✓ |
+| `/vault/change-password`, `/vault/entries*` | ✓ | | |
+| `/sync/*` | | ✓ | |
+| `/pair` | | ✓ (no auth) | ✓ |
+| `/devices*` | ✓ | | ✓ |
+| `/events`, `/auth/respond` | | ✓ | ✓ |
+| `/telemetry`, `/capabilities`, `/actions`, `/media`, `/clipboard`, `/files/*`, `/backup/logs`, `/tools/generate-password` | ✓ | ✓ | ✓ |
+| `/notify`, `/sessions*`, `/input`, `/webcam/*` | | ✓ | ✓ |
+
+There is no `/terminal`, `/exec` or shell endpoint (security §7.7).

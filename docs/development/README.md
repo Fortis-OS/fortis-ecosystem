@@ -1,300 +1,237 @@
 # Fortis Ecosystem — Development Guide
 
-## Repository Layout
+## 0. Rules
 
-The Fortis Ecosystem is split across multiple independent repositories under the [Fortis-Ecosystem](https://github.com/Fortis-Ecosystem) GitHub organization.
+1. **Docs first.** A behaviour change starts as a docs change (security, architecture or API). Code follows. A PR that changes behaviour without the matching docs change is incomplete.
+2. **No dev bypasses.** No hardcoded keys, salts, tokens, "mock success" paths or `if debug { skip auth }`, in any build profile. Tests use generated test keys.
+3. **No `unwrap()`/`expect()` on runtime input or I/O** in `fortis-agent` and `fortis-pam`. Use `Result` and map to an API error. `pam_fortis` must never panic across FFI.
+4. **Secrets** use `SecretString` / `Zeroizing`, never appear in logs or `Debug` output.
+5. Every MUST in the [Security Model](../security/README.md) needs a test.
 
+---
+
+## 1. Layout
+
+```text
+~/dev/Fortis/Fortis-Ecosystem/
+├── fortis-backend/        # Cargo workspace
+│   ├── fortis-core/       # lib (feature "db" = SQLCipher)
+│   ├── fortis-agent/      # bin
+│   ├── fortis-pam/        # cdylib → pam_fortis.so
+│   └── fortis-bindings/   # cdylib → libfortis_bindings.so (UniFFI)
+├── fortis-cli/            # bin "fortis" (standalone crate)
+├── fortis-desktop/        # Tauri v2
+├── fortis-mobile/
+│   ├── android/           # Android app (Gradle)
+│   └── cli/               # Termux backup CLI (Bash)
+├── fortis-backup/         # Bash
+└── docs/
 ```
-~/dev/Fortis-Ecosystem/
-├── fortis-backend/         # Cargo workspace
-│   ├── Cargo.toml          # Workspace manifest
-│   ├── fortis-core/        # Core crypto library
-│   ├── fortis-sync/        # gRPC proto + sync logic
-│   ├── fortis-agent/       # REST/IPC/gRPC daemon
-│   ├── fortis-bindings/    # UniFFI bindings
-│   └── fortis-pam/         # PAM module
-├── fortis-cli/             # Standalone Rust CLI
-├── fortis-desktop/         # Tauri v2 app
-├── fortis-lock/            # Chrome extension
-├── fortis-mobile/          # Android app
-├── fortis-backup/          # Bash backup engine
-├── fortis-observe/         # Next.js analytics
-└── docs/                   # Documentation
-```
-
-### Cargo Workspace
-
-The `fortis-backend` Cargo workspace contains these members:
 
 ```toml
+# fortis-backend/Cargo.toml
 [workspace]
-members = [
-    "fortis-core",
-    "fortis-sync",
-    "fortis-bindings",
-    "fortis-agent",
-    "fortis-pam",
-]
+members = ["fortis-core", "fortis-agent", "fortis-pam", "fortis-bindings"]
 resolver = "2"
 ```
 
-### Cross-Repo Dependencies
+Cross-repo dependencies:
 
-- `fortis-desktop/src-tauri/Cargo.toml` depends on `fortis-core` via path: `../../fortis-backend/fortis-core`
-- `fortis-cli` is a **standalone** project — it communicates with the agent over IPC, not through library imports
+- `fortis-cli` may depend on `fortis-core` with `default-features = false` (path `../fortis-backend/fortis-core`) for the password generator; it talks to the agent only over IPC.
+- `fortis-desktop` does **not** depend on `fortis-core`. It is an HTTP client of the agent.
+- `fortis-mobile` uses the compiled `fortis-bindings` library and the generated Kotlin file.
 
 ---
 
-## Setting Up the Development Environment
-
-### 1. Clone All Repositories
-
-```bash
-mkdir -p ~/dev/Fortis-Ecosystem && cd ~/dev/Fortis-Ecosystem
-
-# Core backend workspace
-git clone git@github.com:Fortis-Ecosystem/fortis-backend.git
-
-# Client applications
-git clone git@github.com:Fortis-Ecosystem/fortis-cli.git
-git clone git@github.com:Fortis-Ecosystem/fortis-desktop.git
-git clone git@github.com:Fortis-Ecosystem/fortis-lock.git
-git clone git@github.com:Fortis-Ecosystem/fortis-mobile.git
-
-# Standalone services
-git clone git@github.com:Fortis-Ecosystem/fortis-backup.git
-git clone git@github.com:Fortis-Ecosystem/fortis-observe.git
-```
-
-### 2. Install Prerequisites
-
-See the [Installation Guide](../installation/README.md) for full system dependency installation.
-
-### 3. Build the Backend Workspace
+## 2. fortis-backend
 
 ```bash
 cd fortis-backend
-
-# Debug build (faster compilation)
 cargo build
-
-# Release build (optimized)
-cargo build --release
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo fmt --check
 ```
 
-### 4. Run Tests
+### Run the agent against a throw-away home
+
+Never point a dev build at your real vault:
 
 ```bash
-# Run all workspace tests
-cargo test
+export DEV_HOME=$(mktemp -d)
+HOME=$DEV_HOME XDG_RUNTIME_DIR=$DEV_HOME/run RUST_LOG=debug cargo run -p fortis-agent
+```
 
-# Run tests for a specific crate
-cargo test -p fortis-core
+The agent creates `$DEV_HOME/.config/fortis/agent.token`. In another shell:
+
+```bash
+TOKEN=$(cat $DEV_HOME/.config/fortis/agent.token)
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8023/api/v1/vault/status
+curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"password":"a long test password"}' http://127.0.0.1:8023/api/v1/vault/init
+```
+
+To keep the tailnet listener off during development set `rest.tailnet = false` in `$DEV_HOME/.config/fortis/agent.toml`.
+
+IPC by hand:
+
+```bash
+printf '{"id":1,"cmd":"status","args":{}}\n' | nc -U $DEV_HOME/run/fortis/agent.sock
+```
+
+### Testing signed requests
+
+`fortis-core` exposes `sign::canonical_request(...)`. Integration tests in `fortis-agent/tests/` generate a P-256 key, pair it through `POST /pair`, and call tailnet endpoints with signed headers. A small helper binary `fortis-agent/examples/signed_curl.rs` does the same from the command line.
+
+### Testing pam_fortis without touching the system
+
+`fortis-pam` keeps its logic in a plain Rust function, `authenticate(cfg: &PamConfig, io: &mut dyn AgentIo) -> Decision`, with the trust-file path and socket path injected. Unit tests cover: missing file, bad permissions, wrong signature, wrong request ID, expired, deny, approve. Only the thin `pam_sm_authenticate` wrapper is untested outside a real PAM stack.
+
+For a real-stack test use a disposable VM or container with its own `/etc/pam.d/fortis-test` service and `pamtester`:
+
+```bash
+pamtester fortis-test "$USER" authenticate
 ```
 
 ---
 
-## Development Workflows
-
-### Working on `fortis-core`
-
-This is a pure library crate. Changes here affect all downstream crates (`fortis-agent`, `fortis-bindings`, `fortis-desktop`).
-
-```bash
-cd fortis-backend
-
-# Build and test
-cargo test -p fortis-core
-
-# Check for compilation errors without full build
-cargo check -p fortis-core
-```
-
-### Working on `fortis-agent`
-
-```bash
-cd fortis-backend
-
-# Run the agent in dev mode
-FORTIS_AGENT_KEY=dev_key RUST_LOG=debug cargo run -p fortis-agent
-
-# Test the REST API with curl
-curl -H "Authorization: Bearer dev_key" http://127.0.0.1:8023/api/v1/telemetry
-
-# Test the IPC socket
-echo "GET" | socat - UNIX-CONNECT:/tmp/fortis_agent.sock
-```
-
-### Working on `fortis-cli`
+## 3. fortis-cli
 
 ```bash
 cd fortis-cli
-
-# Build
 cargo build
-
-# Test (requires running agent)
-./target/debug/fortis-cli add "Test Entry"
-./target/debug/fortis-cli get "Test Entry"
-./target/debug/fortis-cli generate --length 24
-./target/debug/fortis-cli pair
-./target/debug/fortis-cli sync
+./target/debug/fortis status
 ```
 
-### Working on `fortis-desktop`
+The binary is named `fortis` (`[[bin]] name = "fortis"`). Commands:
+
+| Command | IPC |
+|---|---|
+| `fortis status` | `status` |
+| `fortis init` | `init` (prompts twice) |
+| `fortis unlock` / `fortis lock` | `unlock` / `lock` |
+| `fortis list [query] [--type T]` | `list` |
+| `fortis get <title or id> [--field password\|username\|totp] [--copy]` | `get` / `totp` |
+| `fortis add` / `fortis edit <id>` / `fortis rm <id>` | `add` / `edit` / `delete` |
+| `fortis generate [--length N] [--no-symbols]` | `generate` |
+| `fortis pair` | `pair_start` |
+| `fortis devices list` / `fortis devices revoke <id>` | `devices_list` / `devices_revoke` |
+| `sudo fortis pam-enroll` | `pam_devices`, then writes `/etc/fortis/pam/<user>.json` |
+| `fortis backup run` | `backup_run` |
+
+Passwords are read with no echo. `--copy` puts the value on the clipboard and clears it after 30 s. Secrets are printed only when explicitly asked for with `--field`.
+
+`pam-enroll` runs as root via sudo: it finds the invoking user from `SUDO_UID`, connects to `/run/user/$SUDO_UID/fortis/agent.sock`, and writes the trust file atomically (write temp file, `fsync`, `rename`).
+
+---
+
+## 4. fortis-desktop
 
 ```bash
 cd fortis-desktop
-
-# Start Vite dev server + Tauri hot-reload
+npm install
 npm run tauri dev
-
-# Build TypeScript only (type checking)
-npm run build
 ```
 
-> **Prerequisite:** Ensure `fortis-backend/` is cloned at `../../fortis-backend/` relative to `fortis-desktop/src-tauri/`.
+- All agent calls happen in `src-tauri/src/` (Rust, `reqwest`), exposed to the UI as Tauri commands (`vault_status`, `unlock`, `lock`, `list_entries`, `get_entry`, `save_entry`, `delete_entry`, `totp`, `generate_password`, `copy_secret`).
+- The UI never sees the agent token and never calls `fetch` to the agent.
+- Rendering untrusted strings (titles, notes) uses `textContent`, never `innerHTML`.
+- Fonts and icons are bundled; no CDN requests.
 
-### Working on `fortis-lock`
+---
+
+## 5. fortis-mobile and fortis-bindings
+
+### Build the Rust library for Android
 
 ```bash
-cd fortis-lock
-
-# Build the extension
-npm run build
-
-# Then reload in Chrome:
-# chrome://extensions → Click refresh icon on FortisLock
+cargo install cargo-ndk
+rustup target add aarch64-linux-android x86_64-linux-android
+cd fortis-backend/fortis-bindings
+cargo ndk -t arm64-v8a -t x86_64 -o ../../fortis-mobile/android/app/src/main/jniLibs build --release
+cargo run --bin uniffi-bindgen generate --library \
+  ../target/aarch64-linux-android/release/libfortis_bindings.so \
+  --language kotlin --out-dir ../../fortis-mobile/android/app/src/main/java
 ```
 
-### 4. Documentation
+### Bindings surface
 
-Documentation is maintained in the `docs` repository. It uses standard GitHub Flavored Markdown and Mermaid.
+| Function | Purpose |
+|---|---|
+| `derive_wrap_key(password, meta_json) -> bytes` | Argon2id + HKDF, same as the agent |
+| `unwrap_vault_key(wrap_key, wrapped, vault_id) -> bytes` | Decrypt the vault key from `/sync/bootstrap` |
+| `decrypt_entry(vault_key, entry_id, version, blob) -> String` | JSON `VaultEntry` |
+| `encrypt_entry(vault_key, entry_id, version, json) -> bytes` | For local edits before push |
+| `generate_totp(config_json, unix_time) -> String` | TOTP code |
+| `generate_password(length, upper, numbers, symbols) -> String` | |
+| `canonical_request(method, path, ts, nonce, body) -> bytes` | Bytes to sign with the request key |
+| `canonical_approval(request_json, decision) -> bytes` | Bytes to sign with the approval key |
 
-### Architecture Diagrams
+Signing itself happens in Kotlin with the Android Keystore (keys never leave it); Rust only builds the bytes.
 
-The architecture diagrams in `docs/architecture` are dynamic SVGs generated via a build script. If you add a new Rust crate or change the ecosystem topology, you must regenerate them:
+### App structure (target)
+
+```text
+android/app/src/main/java/com/fortis/mobile/
+├── keys/       # Keystore: per-pairing request + approval keys, local wrap key
+├── net/        # signed HTTP client (OkHttp interceptor), events + input WebSockets
+├── pairing/    # paired laptops store, vault-laptop choice, QR pairing
+├── service/    # foreground service holding the events connection
+├── vault/      # local encrypted store (Room), sync engine
+├── sudo/       # approval notification + full-screen activity + BiometricPrompt
+├── remote/     # input (network + Bluetooth HID), webcam (CameraX + MJPEG)
+├── sync/       # camera-roll WorkManager job, notification listener
+├── widget/     # home-screen widget
+└── ui/         # Compose screens: Dashboard, Control, Files, Monitor, Vault, TOTP, Generator, Devices, More
+```
+
+### Migrating the existing app
+
+The app in `fortis-mobile/android` already has the screens; its network and security layers change:
+
+| Today | Target |
+|---|---|
+| Package `com.example.fortismobile` | `com.fortis.mobile` (changing it resets app data — do it before re-pairing) |
+| API key per device in SharedPreferences, `Authorization: Bearer` | Per-pairing Keystore keys; every request signed (`net/`) |
+| `FortisKeyManager` asks for an `ed25519` key (fails on Android) | P-256 keys as in security §6.2 |
+| `FortisAuthService` stub ("gRPC on 50052") | Foreground service with the events WebSocket |
+| Vault screen fetches decrypted entries over the network | Local encrypted vault + sync |
+| `/api/v1/input` WebSocket with no session | Fingerprint-confirmed session first (security §5.6) |
+| `MjpegServer(8080)` on all interfaces, no auth | Tailscale IP only, random port + token (security §7.6) |
+| Camera sync reads `MediaStore.DATA` file paths | Content URIs; `dest=camera` |
+| `POST /files/list` | `GET /files/list?path=` |
+| Terminal screen | Removed |
+| `fix_ui.py`, `scratch.py`, `.kotlin/errors/` | Removed from the repo |
+
+---
+
+## 6. fortis-backup
+
+```bash
+cd fortis-backup
+shellcheck fortis-backup.sh
+```
+
+Test against a scratch `BACKUP_ROOT` (an empty directory you create) before pointing it at the real drive.
+
+---
+
+## 7. Docs and diagrams
 
 ```bash
 cd docs
-./scripts/build_diagrams.sh
+./scripts/build_diagrams.sh       # needs graphviz + cargo-depgraph
 ```
 
-- High-level topology is defined in `docs/architecture/fortis_ecosystem.dot`.
-- The Rust workspace dependency graph is auto-generated using `cargo depgraph --workspace-only`.
-
-### Working on `fortis-mobile`
-
-Open `fortis-mobile/android` in Android Studio. Use the built-in build and run tools.
+- Topology source: `architecture/fortis_ecosystem.dot`.
+- Rust dependency graph: generated from the workspace with `cargo depgraph --workspace-only`.
 
 ---
 
-## Adding a New REST API Endpoint
+## 8. Checklist for a change
 
-1. **Define the handler** in `fortis-backend/fortis-agent/src/transport/rest.rs`:
-   ```rust
-   async fn handle_my_endpoint() -> Json<serde_json::Value> {
-       Json(json!({ "hello": "world" }))
-   }
-   ```
-
-2. **Register the route** in `start_server()`:
-   ```rust
-   let v1_routes = Router::new()
-       // ... existing routes
-       .route("/my-endpoint", get(handle_my_endpoint))
-       .route_layer(middleware::from_fn(auth_middleware));
-   ```
-
-3. **Rebuild and test**:
-   ```bash
-   cd fortis-backend
-   cargo build -p fortis-agent
-   FORTIS_AGENT_KEY=dev_key RUST_LOG=debug cargo run -p fortis-agent
-
-   # In another terminal:
-   curl -H "Authorization: Bearer dev_key" http://127.0.0.1:8023/api/v1/my-endpoint
-   ```
-
----
-
-## Adding a New Vault Entry Type
-
-1. **Add the variant** in `fortis-backend/fortis-core/src/vault/mod.rs`:
-   ```rust
-   pub enum EntryType {
-       // ... existing variants
-       ApiKey {
-           key: SecretString,
-           service: String,
-       },
-   }
-   ```
-
-2. **Update the database** serialization in `fortis-core/src/db/mod.rs`
-
-3. **Update the REST handler** in `fortis-agent/src/transport/rest.rs` to handle the new type
-
-4. **Update the Desktop UI** in `fortis-desktop/src/main.ts` to render and create the new type
-
----
-
-## Adding a New IPC Command
-
-1. **Add the command pattern** in `fortis-backend/fortis-agent/src/transport/ipc.rs` inside the `match` block:
-   ```rust
-   cmd if cmd.starts_with("MY_CMD") => {
-       let arg = cmd.strip_prefix("MY_CMD ").unwrap_or("");
-       // Handle the command
-       stream.write_all(b"Success").await.ok();
-   }
-   ```
-
-2. **Add the CLI subcommand** in `fortis-cli/src/main.rs`:
-   ```rust
-   #[derive(Subcommand)]
-   enum Commands {
-       // ... existing
-       MyCommand { arg: String },
-   }
-   ```
-
-3. **Map the subcommand to IPC message** in the `match` block:
-   ```rust
-   Commands::MyCommand { arg } => format!("MY_CMD {}", arg),
-   ```
-
----
-
-## Code Style
-
-- **Rust**: Follow standard `rustfmt` formatting. Run `cargo fmt` before committing.
-- **TypeScript**: Use the project's ESLint configuration. Run `npm run lint` in `fortis-lock`.
-- **Kotlin**: Follow Android Studio's default Kotlin style guide.
-- **Bash**: Follow `shellcheck` linting rules.
-
----
-
-## Useful Commands
-
-```bash
-# ---- Rust (run from fortis-backend/) ----
-cargo fmt                       # Format all Rust code
-cargo clippy                    # Run linter
-cargo machete                   # Check for unused dependencies
-cargo build -p fortis-core      # Build a specific crate
-cargo doc --open                # Generate and open API docs
-
-# ---- Desktop (run from fortis-desktop/) ----
-npm run tauri dev               # Development mode
-npm run tauri build             # Production build
-npm run build                   # TypeScript type check only
-
-# ---- Chrome Extension (run from fortis-lock/) ----
-npm run build                   # Build extension to dist/
-npm run lint                    # ESLint
-
-# ---- CLI (run from fortis-cli/) ----
-cargo build                     # Build CLI
-cargo run -- add "Test"         # Run with args
-```
+- [ ] Docs updated (spec first)
+- [ ] `cargo fmt`, `cargo clippy -D warnings`, `cargo test` pass in `fortis-backend` and `fortis-cli`
+- [ ] New security rule has a test
+- [ ] No secrets in logs (grep test output for the test password)
+- [ ] Implementation status table in `docs/README.md` updated

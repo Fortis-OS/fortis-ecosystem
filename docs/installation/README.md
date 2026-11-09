@@ -1,295 +1,237 @@
 # Fortis Ecosystem — Installation Guide
 
-This guide walks you through installing and configuring every component of the Fortis Ecosystem from scratch.
+Set up the whole system on a Linux laptop and an Android phone (repeat the laptop steps for each extra laptop). For the systemd and PAM details behind these steps, see the [Deployment Guide](../deployment/README.md).
 
 ---
 
-## Table of Contents
+## Requirements
 
-1. [System Requirements](#system-requirements)
-2. [Install Rust Toolchain](#1-install-rust-toolchain)
-3. [Install Node.js](#2-install-nodejs)
-4. [Install System Dependencies](#3-install-system-dependencies)
-5. [Clone All Repositories](#4-clone-all-repositories)
-6. [Build the Backend](#5-build-the-backend)
-7. [Build the CLI](#6-build-the-cli)
-8. [Set Up the Agent](#7-set-up-the-agent)
-9. [Set Up the Desktop App](#8-set-up-the-desktop-app)
-10. [Set Up the Browser Extension](#9-set-up-the-browser-extension)
-11. [Set Up the Mobile App](#10-set-up-the-mobile-app)
-12. [Install the PAM Module](#11-install-the-pam-module)
-13. [Set Up Backups](#12-set-up-backups)
-14. [Verify Installation](#13-verify-installation)
+| | Minimum |
+|---|---|
+| Laptop OS | Ubuntu 22.04+ / Fedora 38+ (systemd, PipeWire or PulseAudio) |
+| Phone | Android 9 (API 28)+ with a fingerprint sensor; Termux + Termux:API + Termux:Boot (F-Droid) for backups |
+| Rust | 1.85+ (edition 2024) |
+| Node.js | 20+ (desktop app only) |
+| Android Studio | Current stable (to build the phone app) |
+| Tailscale | On both devices, same tailnet |
 
 ---
 
-## System Requirements
-
-| Component | Minimum | Recommended |
-|---|---|---|
-| **OS** | Ubuntu 22.04 / Fedora 38 | Ubuntu 24.04 LTS |
-| **CPU** | 2 cores | 4+ cores |
-| **RAM** | 4 GB | 8 GB+ |
-| **Disk** | 2 GB free | 5 GB+ free |
-| **Rust** | 1.80 (edition 2024) | Latest stable |
-| **Node.js** | 20.x | 22.x LTS |
-| **Android Studio** | Latest | Latest |
-| **Chrome** | 120+ (Manifest V3) | Latest |
-
----
-
-## 1. Install Rust Toolchain
+## 1. Toolchains
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source $HOME/.cargo/env
-
-# Verify
-rustc --version   # Expected: 1.80+
-cargo --version
+source "$HOME/.cargo/env"
+rustc --version
 ```
 
-## 2. Install Node.js
-
 ```bash
-# Using nvm (recommended)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 source ~/.bashrc
 nvm install 22
-nvm use 22
-
-# Verify
-node --version   # Expected: v22.x
-npm --version
 ```
 
-## 3. Install System Dependencies
+## 2. System packages
 
-### Ubuntu / Debian
+Ubuntu / Debian:
 
 ```bash
-sudo apt update && sudo apt install -y \
-    build-essential \
-    pkg-config \
-    libssl-dev \
-    libsqlite3-dev \
-    libpam0g-dev \
-    libwebkit2gtk-4.1-dev \
-    libappindicator3-dev \
-    librsvg2-dev \
-    patchelf \
-    protobuf-compiler \
-    wl-clipboard \
-    playerctl \
-    socat \
-    curl \
-    git
+sudo apt update && sudo apt install -y build-essential pkg-config libssl-dev libpam0g-dev \
+  libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+  wl-clipboard xclip playerctl wireplumber rsync openssh-client netcat-openbsd jq curl git
 ```
 
-### Fedora
+Fedora:
 
 ```bash
-sudo dnf install -y \
-    gcc gcc-c++ \
-    pkg-config \
-    openssl-devel \
-    sqlite-devel \
-    pam-devel \
-    webkit2gtk4.1-devel \
-    libappindicator-gtk3-devel \
-    librsvg2-devel \
-    patchelf \
-    protobuf-compiler \
-    wl-clipboard \
-    playerctl \
-    socat \
-    curl \
-    git
+sudo dnf install -y gcc gcc-c++ pkg-config openssl-devel pam-devel \
+  webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel patchelf \
+  wl-clipboard xclip playerctl wireplumber rsync openssh-clients nmap-ncat jq curl git
 ```
 
-> **Note:** `wl-clipboard` is for Wayland clipboard support (used by `/clipboard` endpoint). If running X11, install `xclip` instead. `playerctl` is for media control. `socat` is for IPC debugging.
+`protobuf-compiler` and `socat` are no longer needed.
 
-## 4. Clone All Repositories
+Optional, only for the features you turn on:
+
+| Feature | Ubuntu / Debian | Fedora |
+|---|---|---|
+| Remote input on X11 | `xdotool` | `xdotool` |
+| Remote input on Wayland | `ydotool` (then `sudo systemctl enable --now ydotoold` or the user unit, and add yourself to the `input` group) | `ydotool` |
+| Phone as webcam | `ffmpeg v4l2loopback-dkms` | `ffmpeg` + `v4l2loopback` (RPM Fusion) |
+| Phone notifications on the laptop | `libnotify-bin` | `libnotify` |
+
+## 3. Tailscale
 
 ```bash
-mkdir -p ~/dev/Fortis-Ecosystem && cd ~/dev/Fortis-Ecosystem
-
-# Backend workspace (agent, core, sync, bindings, pam)
-git clone git@github.com:Fortis-Ecosystem/fortis-backend.git
-
-# Client applications
-git clone git@github.com:Fortis-Ecosystem/fortis-cli.git
-git clone git@github.com:Fortis-Ecosystem/fortis-desktop.git
-git clone git@github.com:Fortis-Ecosystem/fortis-lock.git
-git clone git@github.com:Fortis-Ecosystem/fortis-mobile.git
-
-# Standalone services
-git clone git@github.com:Fortis-Ecosystem/fortis-backup.git
-git clone git@github.com:Fortis-Ecosystem/fortis-observe.git
-
-# Documentation
-git clone git@github.com:Fortis-Ecosystem/docs.git
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+tailscale ip -4      # 100.x.y.z — the phone will connect here
 ```
 
-## 5. Build the Backend
+Install Tailscale on the phone from the Play Store, sign in to the same tailnet, and enable **Always-on VPN**.
+
+## 4. Clone
 
 ```bash
-cd ~/dev/Fortis-Ecosystem/fortis-backend
+mkdir -p ~/dev/Fortis/Fortis-Ecosystem && cd ~/dev/Fortis/Fortis-Ecosystem
+for r in fortis-backend fortis-cli fortis-desktop fortis-mobile fortis-backup docs; do
+  git clone "git@github.com:Fortis-Ecosystem/$r.git"
+done
+```
 
-# Build all workspace crates in release mode
+## 5. Build and install the laptop side
+
+```bash
+cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backend
+cargo build --release -p fortis-agent -p fortis-pam
+install -Dm755 target/release/fortis-agent ~/.local/bin/fortis-agent
+
+cd ../fortis-cli
 cargo build --release
-
-# This builds:
-# - fortis-core     (crypto library)
-# - fortis-sync     (gRPC proto definitions)
-# - fortis-agent    (daemon binary)
-# - fortis-bindings (UniFFI shared library)
-# - fortis-pam      (PAM shared library)
+install -Dm755 target/release/fortis ~/.local/bin/fortis
 ```
 
-## 6. Build the CLI
+Make sure `~/.local/bin` is on your `PATH`.
 
-The CLI is a standalone project, not part of the backend workspace.
+## 6. Start the agent
 
 ```bash
-cd ~/dev/Fortis-Ecosystem/fortis-cli
-cargo build --release
+install -Dm644 ~/dev/Fortis/Fortis-Ecosystem/fortis-backend/fortis-agent/systemd/fortis-agent.service \
+  ~/.config/systemd/user/fortis-agent.service
+systemctl --user daemon-reload
+systemctl --user enable --now fortis-agent
+systemctl --user status fortis-agent
 ```
 
-## 7. Set Up the Agent
+On first start the agent creates `~/.config/fortis/agent.toml`, `agent.token` and `agent.key` with safe permissions. You do **not** create or export an API key yourself.
+
+Check it is listening only where it should:
 
 ```bash
-# Create data directories
-mkdir -p ~/.local/share/fortis
-mkdir -p ~/.config/fortis
-chmod 700 ~/.local/share/fortis ~/.config/fortis
-
-# Generate a secure API key
-export FORTIS_AGENT_KEY=$(openssl rand -hex 32)
-
-# Store the key (for desktop app and future use)
-echo "FORTIS_AGENT_KEY=$FORTIS_AGENT_KEY" > ~/.config/fortis/env
-chmod 600 ~/.config/fortis/env
-
-# Persist in shell
-echo "export FORTIS_AGENT_KEY=$FORTIS_AGENT_KEY" >> ~/.bashrc
-
-# Test run
-cd ~/dev/Fortis-Ecosystem/fortis-backend
-RUST_LOG=info ./target/release/fortis-agent
-# Expected: "REST server started on 0.0.0.0:8023"
-# Press Ctrl+C to stop
-
-# Optional: Install as systemd service
-# See the Deployment Guide for full instructions
+ss -tlnp | grep 8023
+# expected: 127.0.0.1:8023 and 100.x.y.z:8023 — nothing else
 ```
 
-## 8. Set Up the Desktop App
+## 7. Create the vault
 
 ```bash
-cd ~/dev/Fortis-Ecosystem/fortis-desktop
+fortis init          # prompts for a new master password (min 12 chars), twice
+fortis status        # state: unlocked
+fortis add           # interactive: type, title, username, password…
+fortis lock
+```
+
+## 8. Desktop app
+
+```bash
+cd ~/dev/Fortis/Fortis-Ecosystem/fortis-desktop
 npm install
-npm run tauri dev    # Development (hot-reload)
-npm run tauri build  # Production (.deb / AppImage)
+npm run tauri build
+sudo dpkg -i src-tauri/target/release/bundle/deb/fortis-desktop_*.deb   # or use the AppImage
 ```
 
-> **Important:** The Tauri backend depends on `fortis-core` via `path = "../../fortis-backend/fortis-core"`. Both repos must be in the same parent directory.
+The app finds the agent token in `~/.config/fortis/agent.token` automatically.
 
-## 9. Set Up the Browser Extension
+## 9. Phone app
 
-```bash
-cd ~/dev/Fortis-Ecosystem/fortis-lock
-npm install
-npm run build
+1. Open `fortis-mobile/android/` in Android Studio, build, and install on the phone (or `./gradlew installRelease` from that folder).
+2. On the laptop: `fortis pair` — it prints a QR code and a 10-character code (valid 2 minutes).
+3. In the app: **Devices → Pair laptop** → scan the QR (or type the code and the Tailscale IP). Tick **Use as vault laptop** for the laptop that holds your passwords.
+4. Check the key fingerprints shown on both screens match, and confirm on the laptop.
+5. The app asks for your **master password once** to set up its vault copy, then uses your fingerprint.
+6. Allow the app's notification and "run in background" permissions — it needs them to receive `sudo` prompts.
+7. Optional, in **More**: notification mirroring (pick apps), camera-roll sync, Bluetooth keyboard/mouse, home-screen widget.
 
-# Load in Chrome:
-# 1. Open chrome://extensions
-# 2. Enable Developer Mode (toggle in top-right)
-# 3. Click "Load Unpacked"
-# 4. Select the fortis-lock/dist folder
+To pair more laptops, repeat steps 2–4 on each one (leave **Use as vault laptop** unticked).
+
+### Optional features on the laptop
+
+Edit `~/.config/fortis/agent.toml`, then `systemctl --user restart fortis-agent`:
+
+```toml
+[input]
+enabled = true        # remote keyboard/mouse (fingerprint needed to start each session)
+
+[webcam]
+enabled = true
+device = "/dev/video10"
 ```
 
-## 10. Set Up the Mobile App
-
-1. Install [Android Studio](https://developer.android.com/studio)
-2. Install [Tailscale](https://tailscale.com/) on both your Linux machine and Android phone
-3. Open `fortis-mobile/android` in Android Studio
-4. Build and install the app on your device
-5. Pair with the agent:
-   ```bash
-   cd ~/dev/Fortis-Ecosystem/fortis-cli
-   ./target/release/fortis-cli pair
-   # Note the 6-digit code (format: XXX-XXX)
-   # Enter it in the mobile app along with your Tailscale IP
-   ```
-
-## 11. Install the PAM Module
-
-> **⚠️ Caution**: Keep a root terminal open while configuring PAM to avoid lockout.
+For the webcam, create the loopback device once:
 
 ```bash
-cd ~/dev/Fortis-Ecosystem/fortis-backend
-
-# Copy the PAM library
-sudo cp target/release/libfortis_pam.so /lib/security/pam_fortis.so
-
-# Backup PAM config FIRST
-sudo cp /etc/pam.d/sudo /etc/pam.d/sudo.backup
-
-# Add biometric auth to sudo
-# Add this line BEFORE other auth lines in /etc/pam.d/sudo:
-sudo nano /etc/pam.d/sudo
-# Add: auth sufficient pam_fortis.so
+echo 'options v4l2loopback video_nr=10 card_label="Fortis Phone Cam" exclusive_caps=1' | sudo tee /etc/modprobe.d/fortis-v4l2loopback.conf
+echo v4l2loopback | sudo tee /etc/modules-load.d/fortis-v4l2loopback.conf
+sudo modprobe v4l2loopback
 ```
 
-## 12. Set Up Backups
+## 10. Fingerprint `sudo` (optional)
+
+> Keep a second terminal open with `sudo -s` until you have tested this.
 
 ```bash
-cd ~/dev/Fortis-Ecosystem/fortis-backup
+cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backend
+sudo install -Dm644 target/release/libfortis_pam.so /usr/lib/security/pam_fortis.so   # Fedora: /usr/lib64/security/
+sudo fortis pam-enroll          # lists paired phones and key fingerprints; confirm
+sudo cp /etc/pam.d/sudo /etc/pam.d/sudo.fortis-backup
+sudoedit /etc/pam.d/sudo
+```
 
-# Create config from example
-cp backup.conf.example backup.conf
-chmod 600 backup.conf
+Add this line directly below `#%PAM-1.0`, **above** `@include common-auth` (Ubuntu) or `auth include system-auth` (Fedora):
 
-# Edit with your paths
-nano backup.conf
+```text
+auth    sufficient    pam_fortis.so
+```
 
-# Make script executable
-chmod +x fortis-backup.sh
+Test in a new terminal:
 
-# Test run
-./fortis-backup.sh
+```bash
+sudo -k && sudo true     # phone prompts; approve with fingerprint
+```
 
-# Install systemd timer for daily automation
-mkdir -p ~/.config/systemd/user/
-cp systemd/fortis-backup.service ~/.config/systemd/user/
-cp systemd/fortis-backup.timer ~/.config/systemd/user/
+Deny on the phone or wait 30 s — you should get the normal password prompt.
+
+## 11. Backups
+
+```bash
+cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backup
+cp backup.conf.example backup.conf && chmod 600 backup.conf
+$EDITOR backup.conf          # set BACKUP_ROOT, PROJECTS, SECRETS (add ~/.local/share/fortis), MEMORIES
+./fortis-backup.sh           # first run
+install -Dm644 systemd/fortis-backup.service ~/.config/systemd/user/fortis-backup.service
+install -Dm644 systemd/fortis-backup.timer   ~/.config/systemd/user/fortis-backup.timer
 systemctl --user daemon-reload
 systemctl --user enable --now fortis-backup.timer
 ```
 
-## 13. Verify Installation
+### Off-site copy to the phone (optional)
+
+On the phone, in Termux:
 
 ```bash
-# Check agent is responding
-curl -s -H "Authorization: Bearer $FORTIS_AGENT_KEY" \
-  http://127.0.0.1:8023/api/v1/telemetry | head -c 200
-
-# Check IPC socket
-echo "GET" | socat - UNIX-CONNECT:/tmp/fortis_agent.sock
-
-# Check CLI
-cd ~/dev/Fortis-Ecosystem/fortis-cli
-./target/release/fortis-cli add "Installation Test"
-
-# Check vault database exists
-ls -la ~/.local/share/fortis/vault.db
-
-# Check backup timer
-systemctl --user list-timers --all | grep fortis
+pkg install git openssh termux-api jq
+git clone https://github.com/Fortis-Ecosystem/fortis-mobile.git
+bash fortis-mobile/cli/install.sh            # installs ~/.local/bin/fortis-mobile + Termux:Boot hook
 ```
 
-Expected output for telemetry:
-```json
-{"cpu":"...","mem_total":"...","mem_used":"...","storage_total":"...","storage_used":"...","temp":"...","uptime":"..."}
+On the laptop:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/fortis_mobile -N ''
+# copy ~/.ssh/fortis_mobile.pub into the phone's ~/.ssh/authorized_keys
+ssh-keyscan -p 8022 <phone-tailscale-ip> >> ~/.ssh/known_hosts_fortis_mobile
 ```
+
+Set `MOBILE_IP` and `MOBILE_PORT=8022` in `backup.conf`. At backup time, tap **Start backup mode** in the app's Dashboard (or run `fortis-mobile start` in Termux).
+
+## 12. Verify
+
+```bash
+fortis status                                         # agent reachable, vault state, paired phones
+curl -s -H "Authorization: Bearer $(cat ~/.config/fortis/agent.token)" \
+  http://127.0.0.1:8023/api/v1/telemetry
+ls -la ~/.config/fortis ~/.local/share/fortis         # all 0700 / 0600
+systemctl --user list-timers | grep fortis-backup
+```
+
+Then walk through the [audit checklist](../security/README.md#9-release-audit-checklist).

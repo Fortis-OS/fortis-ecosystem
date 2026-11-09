@@ -1,194 +1,123 @@
 # Fortis Ecosystem
 
-> A unified, privacy-first security platform. Password manager, authenticator, biometric sudo, encrypted backup, and browser privacy firewall — all in one cohesive system.
+> A privacy-first system for **your Android phone and your Linux laptop(s)**: an encrypted password vault on both, TOTP codes, fingerprint-approved `sudo`, full laptop remote control, phone-as-webcam, and encrypted off-site backups — joined over Tailscale, with no cloud service in between.
 
-[![Status](https://img.shields.io/badge/Status-Active_Development-emerald?style=for-the-badge)](https://github.com/Fortis-Ecosystem)
 [![Network](https://img.shields.io/badge/Network-Tailscale_Mesh-blue?style=for-the-badge)](https://tailscale.com)
 [![Maintainer](https://img.shields.io/badge/Architect-Ganesh_Angadi-D4AF37?style=for-the-badge)](https://github.com/ganeshak11)
 
+**These documents are the specification.** Code is written to match them; when code and docs disagree, the docs win and the code gets fixed. Start with the [Security Model](./security/README.md).
+
 ---
 
-## Architecture Overview
+## What Fortis does
+
+| Feature | Laptop | Phone |
+|---|---|---|
+| Encrypted password vault | ✓ desktop app + CLI | ✓ own encrypted copy, synced |
+| TOTP authenticator | ✓ | ✓ |
+| Fingerprint-approved `sudo` | prompts | approves |
+| Laptop remote (telemetry, lock/suspend/shutdown, media, volume, clipboard, files) | serves | controls (app + home-screen widget) |
+| Remote keyboard & mouse | receives (off by default, fingerprint to start) | network or Bluetooth mode |
+| Phone camera as webcam | `/dev/video10` (off by default) | streams |
+| Notification mirroring | shows phone notifications | sends (off by default, per-app) |
+| Camera-roll sync | `~/Pictures/FortisCameraRoll` | uploads new photos daily (off by default) |
+| Backups (mirror + snapshots) | ✓ | receives off-site copy (Termux) |
+
+There is deliberately **no remote shell** — use SSH over Tailscale.
+
+## Architecture
 
 ```mermaid
-graph TD
-    subgraph Clients
-        LOCK["fortis-lock<br/>(Chrome Extension)"]
-        DESKTOP["fortis-desktop<br/>(Tauri App)"]
-        MOBILE["fortis-mobile<br/>(Android/Compose)"]
-        CLI["fortis-cli<br/>(Terminal)"]
+graph LR
+    subgraph Laptop
+        DESKTOP["fortis-desktop"] -- loopback HTTP --> AGENT
+        CLI["fortis-cli"] -- Unix socket --> AGENT
+        PAM["pam_fortis.so"] -- Unix socket --> AGENT
+        AGENT["fortis-agent"] --> DB[("vault.db<br/>SQLCipher")]
+        BACKUP["fortis-backup"] --> DRIVE[("/mnt/FortisVault")]
     end
-
-    subgraph "fortis-backend (Rust Workspace)"
-        AGENT["fortis-agent<br/>REST :8023 | IPC | gRPC :50051"]
-        CORE["fortis-core<br/>(Crypto / Vault / DB)"]
-        SYNC["fortis-sync<br/>(gRPC Proto)"]
-        PAM["fortis-pam<br/>(PAM Module)"]
-        BINDINGS["fortis-bindings<br/>(UniFFI)"]
+    subgraph Phone
+        MOBILE["fortis-mobile"]
+        TERMUX["Termux sshd"]
     end
-
-    subgraph "Standalone Services"
-        BACKUP["fortis-backup<br/>(Bash / systemd)"]
-        OBSERVE["fortis-observe<br/>(Next.js)"]
-    end
-
-    subgraph Storage
-        DB[("vault.db<br/>SQLCipher AES-256")]
-    end
-
-    LOCK -- "HTTP :8023" --> AGENT
-    DESKTOP -- "HTTP :8023 / IPC" --> AGENT
-    MOBILE -- "gRPC via Tailscale" --> AGENT
-    CLI -- "Unix Socket" --> AGENT
-    PAM -- "Unix Socket" --> AGENT
-
-    AGENT --> CORE
-    AGENT --> SYNC
-    CORE --> DB
-    BINDINGS --> CORE
+    MOBILE -- "Tailscale: signed HTTP + events" --> AGENT
+    BACKUP -- "Tailscale: rsync/SSH" --> TERMUX
 ```
 
----
+Full detail: [Architecture](./architecture/README.md).
 
 ## Repositories
 
-All repositories live under the [Fortis-Ecosystem](https://github.com/Fortis-Ecosystem) GitHub organization.
-
-| Repository | Language | Description |
+| Repository | Language | Contents |
 |---|---|---|
-| [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) | Rust | Cargo workspace: agent daemon, core crypto library, gRPC sync, PAM module, UniFFI bindings |
-| [fortis-cli](https://github.com/Fortis-Ecosystem/fortis-cli) | Rust | Command-line interface for interacting with the agent daemon over IPC |
-| [fortis-desktop](https://github.com/Fortis-Ecosystem/fortis-desktop) | TypeScript/Rust | Tauri v2 desktop application with glassmorphic UI |
-| [fortis-mobile](https://github.com/Fortis-Ecosystem/fortis-mobile) | Kotlin | Android app (Jetpack Compose) — vault, authenticator, biometric auth |
-| [fortis-lock](https://github.com/Fortis-Ecosystem/fortis-lock) | TypeScript/React | Chrome Manifest V3 extension — browser privacy firewall with biometric unlock |
-| [fortis-backup](https://github.com/Fortis-Ecosystem/fortis-backup) | Bash | Incremental backup engine with hard-linked snapshots, systemd integration, and remote sync |
-| [fortis-observe](https://github.com/Fortis-Ecosystem/fortis-observe) | TypeScript/Next.js | WebGL telemetry and visitor analytics platform (standalone, isolated) |
-| [docs](https://github.com/Fortis-Ecosystem/docs) | Markdown | This repository — ecosystem-wide documentation |
-| [.github](https://github.com/Fortis-Ecosystem/.github) | Markdown | GitHub organization profile |
+| [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) | Rust | Workspace: `fortis-core`, `fortis-agent`, `fortis-pam`, `fortis-bindings` |
+| [fortis-cli](https://github.com/Fortis-Ecosystem/fortis-cli) | Rust | Terminal client (IPC) |
+| [fortis-desktop](https://github.com/Fortis-Ecosystem/fortis-desktop) | Rust + TypeScript | Tauri v2 vault app |
+| [fortis-mobile](https://github.com/Fortis-Ecosystem/fortis-mobile) | Kotlin + Bash | Android app (`android/`) and Termux backup CLI (`cli/`) |
+| [fortis-backup](https://github.com/Fortis-Ecosystem/fortis-backup) | Bash | Backup engine + systemd timer |
+| [docs](https://github.com/Fortis-Ecosystem/docs) | Markdown | This specification |
 
----
+Not part of the ecosystem: `fortis-observe` (separate web-analytics project) and `fortis-lock` (dropped).
 
-## Quick Start
+## Security at a glance
 
-### Prerequisites
-
-| Requirement | Version | Purpose |
-|---|---|---|
-| Rust | 1.80+ (edition 2024) | Backend, CLI, PAM module |
-| Node.js | 20+ | Desktop app, Chrome extension |
-| Android Studio | Latest | Mobile app |
-| Tailscale | Latest | VPN mesh for mobile ↔ agent communication |
-
-### 1. Clone and Build the Backend
-
-```bash
-git clone git@github.com:Fortis-Ecosystem/fortis-backend.git
-cd fortis-backend
-
-# Build all workspace crates
-cargo build --release
-
-# Set the API key
-export FORTIS_AGENT_KEY=$(openssl rand -hex 32)
-```
-
-### 2. Start the Agent
-
-```bash
-RUST_LOG=info ./target/release/fortis-agent
-```
-
-The agent starts three transport servers:
-- **REST API** on `0.0.0.0:8023` (Bearer token auth)
-- **IPC Socket** at `/tmp/fortis_agent.sock` (owner-only permissions)
-- **gRPC** on port `50051` (stub — planned for mobile biometric relay)
-
-### 3. Use the CLI
-
-```bash
-git clone git@github.com:Fortis-Ecosystem/fortis-cli.git
-cd fortis-cli
-cargo build --release
-
-./target/release/fortis-cli add "My Secret Note"
-./target/release/fortis-cli get "My Secret Note"
-./target/release/fortis-cli pair
-```
-
-### 4. Launch the Desktop App
-
-```bash
-git clone git@github.com:Fortis-Ecosystem/fortis-desktop.git
-cd fortis-desktop
-npm install
-npm run tauri dev
-```
-
-> **Note:** The desktop app requires `fortis-backend/fortis-core` at `../../fortis-backend/fortis-core` relative to `src-tauri/`. Ensure the repos are cloned side-by-side in the same parent directory.
-
-### 5. Load the Browser Extension
-
-```bash
-git clone git@github.com:Fortis-Ecosystem/fortis-lock.git
-cd fortis-lock
-npm install
-npm run build
-# Open chrome://extensions → Enable Developer Mode → Load Unpacked → select dist/
-```
-
----
-
-## Security Model
-
-- **SQLCipher Vault Encryption** — AES-256 encrypted database with 256,000 KDF iterations
-- **Argon2id Key Derivation** — Master password → 32-byte key via Argon2id (64 MB memory, 3 iterations)
-- **ChaCha20-Poly1305** — Symmetric encryption for individual vault field values
-- **Ed25519 Signatures** — Biometric challenge-response authentication between agent and mobile
-- **Zero-Trust Pairing** — Devices exchange public keys with a single-use 6-digit OTP
-- **Zeroized Memory** — All secrets wrapped in `zeroize::Zeroizing<String>`, wiped from RAM on drop
-- **Bearer Token Auth** — REST API requires `Authorization: Bearer <FORTIS_AGENT_KEY>`
-- **Socket Permissions** — IPC socket restricted to `chmod 0600` (owner-only)
-
----
+- Vault: SQLCipher + per-entry XChaCha20-Poly1305; keys from **Argon2id** (random per-vault salt) split with **HKDF**.
+- Agent listens on **`127.0.0.1` and the Tailscale IP only** — never on the LAN.
+- Desktop authenticates with a local token kept out of the webview; the phone **signs every request** with a hardware-backed P-256 key.
+- `sudo` approvals are signed on the phone after a fingerprint and **verified by the PAM module against a root-owned key file** — a compromised user account can't fake one. Any failure falls back to the password prompt.
+- Remote keyboard/mouse needs a fresh fingerprint to start and shows a desktop notification while active; webcam streams only over Tailscale with a one-time token.
+- Auto-lock after 15 minutes idle; unlock back-off; no secrets in logs.
 
 ## Documentation
 
-| Guide | Description |
+| Guide | Contents |
 |---|---|
-| [Installation Guide](./installation/README.md) | Full setup from scratch |
-| [API Reference](./api/README.md) | REST, IPC, and gRPC endpoint documentation |
-| [Architecture Guide](./architecture/README.md) | System design, data flow, component layers |
-| [Security Model](./security/README.md) | Encryption, authentication, threat model |
-| [Development Guide](./development/README.md) | Building, testing, contributing |
-| [Deployment Guide](./deployment/README.md) | Production systemd, PAM, Tauri packaging |
-| [Troubleshooting](./troubleshooting/README.md) | Common issues and debug commands |
+| [Security Model](./security/README.md) | Threat model, crypto, PAM design, permissions, audit checklist |
+| [Architecture](./architecture/README.md) | Components, data model, data flows |
+| [API Reference](./api/README.md) | REST, events WebSocket, IPC |
+| [Installation](./installation/README.md) | Set everything up from scratch |
+| [Deployment](./deployment/README.md) | systemd services, PAM install, packaging |
+| [Development](./development/README.md) | Building, testing, contributing |
+| [Troubleshooting](./troubleshooting/README.md) | Common problems |
 
----
+## Directory layout
 
-## Recommended Directory Layout
+Clone repositories side by side:
 
-For development, clone all repositories side-by-side:
-
-```
-~/dev/Fortis-Ecosystem/
-├── fortis-backend/         # Rust workspace (agent, core, sync, bindings, pam)
-├── fortis-cli/             # Rust CLI (standalone)
-├── fortis-desktop/         # Tauri desktop app
-├── fortis-mobile/          # Android Kotlin app
-├── fortis-lock/            # Chrome privacy extension
-├── fortis-backup/          # Bash backup engine
-├── fortis-observe/         # Next.js analytics (standalone)
-├── docs/                   # This documentation repo
-└── archives/               # Legacy/archived code
+```text
+~/dev/Fortis/Fortis-Ecosystem/
+├── fortis-backend/
+├── fortis-cli/
+├── fortis-desktop/
+├── fortis-mobile/
+├── fortis-backup/
+├── docs/
+└── archives/        # old prototypes, not built
 ```
 
-> **Important:** `fortis-desktop/src-tauri/Cargo.toml` depends on `fortis-core` via a relative path (`../../fortis-backend/fortis-core`). This layout is required for the desktop app to build.
+## Implementation status
 
----
+The code is being brought in line with this specification. Status per area (updated as work lands):
+
+| Area | Status |
+|---|---|
+| Vault crypto (Argon2id, HKDF, AAD, random salt) | Partial — envelope encryption done; static salt, no HKDF, no AAD |
+| Agent listeners & auth (loopback/tailnet, token file, signatures) | Not started — binds `0.0.0.0`, env-var token |
+| Auto-lock, unlock back-off | Not started |
+| Vault CRUD + sync API | Partial — list/add only |
+| IPC JSON protocol + peer-UID check | Not started — plaintext `ADD` only, socket in `/tmp` |
+| File confinement, action list | Not started |
+| Pairing + device store | Not started (removed in v2 purge) |
+| `pam_fortis` + approvals + events stream | Not started (old insecure version removed) |
+| fortis-cli | Not started — speaks old protocol |
+| fortis-desktop | Broken build — calls old `Database::open` |
+| Notifications, sessions, remote input, webcam endpoints | Not started (old unauthenticated input endpoint removed) |
+| fortis-mobile app — screens (dashboard, control, files, monitor, remote input, webcam, widget, camera sync, notifications) | Built, but talks to the old API with a stored API key |
+| fortis-mobile app — security (per-pairing P-256 keys, signed requests, phone vault, sudo prompts) | Not started — current key code requests Ed25519 (unsupported), sudo service is a stub, vault reads plaintext over the network |
+| fortis-mobile app — terminal screen | To be removed (no remote shell) |
+| fortis-mobile Termux CLI | Done |
+| fortis-backup | Done |
 
 ## Maintainer
 
-**Ganesh Angadi**
-- GitHub: [@ganeshak11](https://github.com/ganeshak11)
-- Portfolio: [ganeshangadi.online](https://ganeshangadi.online)
-- LinkedIn: [Ganesh Angadi](https://linkedin.com/in/ganeshangadi1301)
+**Ganesh Angadi** — [GitHub](https://github.com/ganeshak11) · [Portfolio](https://ganeshangadi.online) · [LinkedIn](https://linkedin.com/in/ganeshangadi1301)

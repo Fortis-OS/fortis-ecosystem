@@ -3,18 +3,16 @@ digraph G {
     node [fontname="Helvetica,Arial,sans-serif"]
     edge [fontname="Helvetica,Arial,sans-serif"]
 
-    // Graph styling
     graph [
         rankdir=LR,
-        nodesep=0.8,
-        ranksep=1.2,
+        nodesep=0.7,
+        ranksep=1.1,
         pad="0.5",
         bgcolor="#0D1117",
         fontcolor="#FFFFFF",
-        splines=ortho
+        splines=spline
     ]
 
-    // Node styles
     node [
         shape=box,
         style="rounded,filled",
@@ -25,7 +23,6 @@ digraph G {
         margin="0.3,0.15"
     ]
 
-    // Edge styles
     edge [
         color="#8B949E",
         penwidth=1.5,
@@ -34,69 +31,51 @@ digraph G {
         fontsize=10
     ]
 
-    subgraph cluster_clients {
-        label = "Client Applications"
-        color = "#238636"
-        fontcolor = "#238636"
-        style = "rounded,dashed"
-        penwidth = 2
-        
-        desktop [label="fortis-desktop\n(Tauri v2 / React)", fillcolor="#1F6FEB", fontcolor="#FFFFFF"]
-        mobile [label="fortis-mobile\n(Android / Compose)", fillcolor="#238636", fontcolor="#FFFFFF"]
-        lock [label="fortis-lock\n(Chrome Ext)", fillcolor="#D29922", fontcolor="#FFFFFF"]
-        cli [label="fortis-cli\n(Terminal)", fillcolor="#8957E5", fontcolor="#FFFFFF"]
-    }
-
-    subgraph cluster_backend {
-        label = "fortis-backend (Rust Workspace)"
+    subgraph cluster_laptop {
+        label = "Laptop (Linux)"
         color = "#8957E5"
         fontcolor = "#8957E5"
         style = "rounded,dashed"
         penwidth = 2
 
-        agent [label="fortis-agent\n(REST | IPC | gRPC)", shape=cylinder, fillcolor="#238636", fontcolor="#FFFFFF"]
-        core [label="fortis-core\n(Crypto / Models)"]
-        sync [label="fortis-sync\n(gRPC / CRDT)"]
-        pam [label="fortis-pam\n(PAM Module)"]
-        bindings [label="fortis-bindings\n(UniFFI)"]
+        desktop [label="fortis-desktop\n(Tauri v2)", fillcolor="#1F6FEB", fontcolor="#FFFFFF"]
+        cli     [label="fortis-cli\n(fortis)", fillcolor="#8957E5", fontcolor="#FFFFFF"]
+        pam     [label="pam_fortis.so\n(sudo, root)", fillcolor="#DA3633", fontcolor="#FFFFFF"]
+        trust   [label="/etc/fortis/pam/<user>.json\n(root-owned approval keys)", shape=note]
+
+        agent   [label="fortis-agent\n127.0.0.1:8023 | tailnet:8023\nIPC socket", fillcolor="#238636", fontcolor="#FFFFFF"]
+        core    [label="fortis-core\n(crypto / models / db)"]
+        db      [label="vault.db\n(SQLCipher + XChaCha20)", shape=cylinder]
+
+        backup  [label="fortis-backup\n(Bash / systemd timer)"]
+        drive   [label="/mnt/FortisVault", shape=cylinder]
     }
 
-    subgraph cluster_services {
-        label = "Standalone Services"
-        color = "#1F6FEB"
-        fontcolor = "#1F6FEB"
+    subgraph cluster_phone {
+        label = "Phone (Android)"
+        color = "#238636"
+        fontcolor = "#238636"
         style = "rounded,dashed"
         penwidth = 2
-        
-        backup [label="fortis-backup\n(Bash / systemd)"]
-        observe [label="fortis-observe\n(Next.js Analytics)"]
+
+        mobile   [label="fortis-mobile app\n(vault, TOTP, sudo, remote,\nwebcam, BT keyboard)", fillcolor="#238636", fontcolor="#FFFFFF"]
+        keystore [label="Android Keystore\n(request + approval keys)", shape=note]
+        bindings [label="fortis-bindings\n(Rust via UniFFI)"]
+        termux   [label="Termux: sshd +\nfortis-mobile CLI\n(backup target)"]
     }
 
-    subgraph cluster_storage {
-        label = "Storage"
-        color = "#30363D"
-        fontcolor = "#8B949E"
-        style = "rounded,dashed"
-        
-        db [label="vault.db\n(SQLCipher AES-256)", shape=cylinder, fillcolor="#161B22"]
-    }
+    desktop -> agent [label=" loopback HTTP\n bearer token", color="#1F6FEB"]
+    cli     -> agent [label=" Unix socket", color="#8957E5"]
+    pam     -> agent [label=" Unix socket\n auth_request", color="#DA3633"]
+    pam     -> trust [label=" verifies with", style=dashed, color="#DA3633"]
 
-    // Connections
-    desktop -> agent [label=" HTTP / IPC", color="#1F6FEB"]
-    mobile -> agent [label=" gRPC (Tailscale)", color="#238636"]
-    lock -> agent [label=" HTTP", color="#D29922"]
-    cli -> agent [label=" Unix Socket", color="#8957E5"]
-    pam -> agent [label=" Unix Socket", color="#8957E5"]
+    agent -> core
+    core  -> db [dir=both]
 
-    agent -> core [label=" DB / Crypto"]
-    agent -> sync [label=" Discovery / Sync"]
-    bindings -> core [label=" FFI export"]
-    
-    core -> db [label=" Read / Write", dir=both]
-    
-    // Implicit logical links
-    backup -> db [label=" Rsync / Snapshots", style=dashed]
-    
-    {rank=same; desktop mobile lock cli}
-    {rank=same; backup observe}
+    mobile -> agent [label=" Tailscale\n signed HTTP + events WS", color="#238636"]
+    mobile -> keystore [style=dashed]
+    mobile -> bindings
+
+    backup -> drive  [label=" mirror + snapshots"]
+    backup -> termux [label=" rsync/SSH over Tailscale", style=dashed]
 }
