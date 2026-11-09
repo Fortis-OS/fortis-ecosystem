@@ -715,6 +715,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fortis-pam"
+version = "0.2.0"
+dependencies = [
+ "fortis-core",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "fs-err"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

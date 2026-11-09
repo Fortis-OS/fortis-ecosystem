@@ -1,5 +1,5 @@
 [workspace]
-members = ["fortis-core", "fortis-agent", "fortis-bindings"]
+members = ["fortis-core", "fortis-agent", "fortis-pam", "fortis-bindings"]
 resolver = "2"
 
 # Argon2id with the spec's parameters (64 MiB, t=3, p=4) is very slow when
@@ -12,3 +12,7 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.p256]
 opt-level = 3
+
+# pam_fortis relies on catch_unwind; never build with panic = "abort" (security §4.7).
+[profile.release]
+panic = "unwind"
