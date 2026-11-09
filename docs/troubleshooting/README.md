@@ -85,7 +85,7 @@ Expected: changing the master password re-wraps the vault key. On the phone: Set
   sudo stat -c '%a %U:%G %n' /etc/fortis /etc/fortis/pam /etc/fortis/pam/$USER.json
   ```
 
-- Add `debug` to the PAM line and check `sudo journalctl -t pam_fortis -n 20`.
+- Add `debug` to the PAM line and check `sudo journalctl -g pam_fortis -n 20`.
 
 ### sudo always asks for the password
 
@@ -217,7 +217,7 @@ journalctl --user -u fortis-agent -f
 stat -c '%a %n' ~/.config/fortis/* ~/.local/share/fortis/*
 
 # PAM
-sudo journalctl -t pam_fortis -n 50
+sudo journalctl -g pam_fortis -n 50
 
 # Backup
 systemctl --user list-timers | grep fortis

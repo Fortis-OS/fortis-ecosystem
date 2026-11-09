@@ -113,7 +113,7 @@ Optional module arguments:
 |---|---|---|
 | `timeout=<secs>` | `30` | Max wait for the phone (1–60). The agent's own `auth.approval_timeout_secs` should be equal or lower. The module's hard deadline is `timeout + 2 s`. |
 | `services=<a,b>` | `sudo,sudo-i` | PAM services the module acts for; any other service → `PAM_IGNORE` immediately |
-| `debug` | off | Log decisions (never secrets) to syslog (`journalctl -t pam_fortis`) |
+| `debug` | off | Log decisions (never secrets) to syslog (`sudo journalctl -g pam_fortis`) |
 
 Behaviour (security §4.6): returns `PAM_SUCCESS` only for a valid phone signature; everything else is `PAM_IGNORE`, so the next line (your password) runs. Do **not** add `pam_fortis` to `login`, `sshd`, `gdm`/`sddm` or `common-auth`.
 
@@ -228,6 +228,6 @@ tail -20 /mnt/FortisVault/Logs/mirror/mirror.log
 ```bash
 journalctl --user -u fortis-agent -n 100
 journalctl --user -u fortis-backup -n 100
-sudo journalctl -t pam_fortis -n 50          # PAM decisions (with the debug argument)
+sudo journalctl -g pam_fortis -n 50          # PAM decisions (with the debug argument)
 ls /mnt/FortisVault/Logs/snapshots/daily/
 ```

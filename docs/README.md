@@ -108,7 +108,7 @@ The code is being brought in line with this specification. Status per area (upda
 | IPC JSON protocol + peer-UID check | **Done** — `$XDG_RUNTIME_DIR/fortis/agent.sock`, root limited to `auth_request` / `pam_devices` |
 | File confinement, action list | **Done** — `/proc`-based telemetry, fixed action list, root-confined files |
 | Pairing + device store | **Done** (agent side) |
-| `pam_fortis` + approvals + events stream | Agent relay + events **done**; `pam_fortis` module not started |
+| `pam_fortis` + approvals + events stream | **Done** — module with lockout safeguards, two-stage install, tested through real libpam and the real sudo stack in a sandbox (not yet on real hardware with a phone) |
 | fortis-cli | **Done** — all commands incl. `pair` (QR) and `sudo fortis pam-enroll` |
 | fortis-desktop | Broken build — calls old `Database::open` |
 | Notifications, sessions, remote input, webcam endpoints | **Done** (agent side; tested without real xdotool/ydotool/ffmpeg) |
