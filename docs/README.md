@@ -110,7 +110,7 @@ The code is being brought in line with this specification. Status per area (upda
 | Pairing + device store | **Done** (agent side) |
 | `pam_fortis` + approvals + events stream | **Done** — module with lockout safeguards, two-stage install, tested through real libpam and the real sudo stack in a sandbox (not yet on real hardware with a phone) |
 | fortis-cli | **Done** — all commands incl. `pair` (QR) and `sudo fortis pam-enroll` |
-| fortis-desktop | Broken build — calls old `Database::open` |
+| fortis-desktop | Rewritten — UI built and checked, editor JSON verified against the agent; Tauri shell not yet compiled (needs WebKitGTK dev libraries) |
 | Notifications, sessions, remote input, webcam endpoints | **Done** (agent side; tested without real xdotool/ydotool/ffmpeg) |
 | fortis-mobile app — screens (dashboard, control, files, monitor, remote input, webcam, widget, camera sync, notifications) | Built, but talks to the old API with a stored API key |
 | fortis-bindings (phone crypto API) | **Done** — key derivation, entry crypto, TOTP, canonical bytes, signature verify |
