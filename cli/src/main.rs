@@ -16,6 +16,7 @@ mod clipboard;
 mod entries;
 mod ipc;
 mod pam;
+mod pam_install;
 mod prompt;
 
 use entries::{Kind, Res};
@@ -121,6 +122,18 @@ enum Command {
         #[arg(long, short)]
         yes: bool,
     },
+    /// Stage 1: write the fortis-test PAM service; with --sudo, stage 2: enable for sudo (run with sudo)
+    PamInstall {
+        /// Edit /etc/pam.d/sudo (only after a passing `pam-test`)
+        #[arg(long)]
+        sudo: bool,
+        #[arg(long, short)]
+        yes: bool,
+    },
+    /// Run a real PAM conversation against the fortis-test service (run with sudo)
+    PamTest,
+    /// Remove pam_fortis from /etc/pam.d/sudo and the test service (sudo or pkexec)
+    PamUninstall,
     #[command(name = "__clear-clipboard", hide = true)]
     ClearClipboard { hash: String },
 }
@@ -315,6 +328,9 @@ fn run(cli: Cli) -> Res<()> {
             return Ok(());
         }
         Command::PamEnroll { yes } => return pam::run(yes),
+        Command::PamInstall { sudo, yes } => return pam_install::run_install(sudo, yes),
+        Command::PamTest => return pam_install::run_test(),
+        Command::PamUninstall => return pam_install::run_uninstall(),
         Command::Generate {
             length,
             no_uppercase,
@@ -535,7 +551,12 @@ fn run(cli: Cli) -> Res<()> {
             c.call("backup_run", json!({}))?;
             println!("Backup started. Follow it with:  journalctl --user -f | grep -i backup");
         }
-        Command::PamEnroll { .. } | Command::Generate { .. } | Command::ClearClipboard { .. } => {
+        Command::PamEnroll { .. }
+        | Command::PamInstall { .. }
+        | Command::PamTest
+        | Command::PamUninstall
+        | Command::Generate { .. }
+        | Command::ClearClipboard { .. } => {
             unreachable!()
         }
     }
@@ -572,6 +593,9 @@ mod tests {
         assert!(Cli::try_parse_from(["fortis", "add", "--type", "card"]).is_ok());
         assert!(Cli::try_parse_from(["fortis", "devices", "revoke", "abcd1234", "-y"]).is_ok());
         assert!(Cli::try_parse_from(["fortis", "pam-enroll"]).is_ok());
+        assert!(Cli::try_parse_from(["fortis", "pam-install", "--sudo", "-y"]).is_ok());
+        assert!(Cli::try_parse_from(["fortis", "pam-test"]).is_ok());
+        assert!(Cli::try_parse_from(["fortis", "pam-uninstall"]).is_ok());
         assert!(Cli::try_parse_from(["fortis", "ls", "--type", "totp"]).is_ok());
     }
 }
