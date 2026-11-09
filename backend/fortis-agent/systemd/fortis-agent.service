@@ -1,14 +1,23 @@
 [Unit]
-Description=Fortis Agent Unified Daemon
-After=network.target
+Description=Fortis Agent
+After=network-online.target tailscaled.service
+Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=path-to/fortis-backend/target/release/fortis-agent
+ExecStart=%h/.local/bin/fortis-agent
 Restart=on-failure
 RestartSec=5s
-Environment="FORTIS_AGENT_KEY=dev_key"
-Environment="RUST_LOG=info"
+Environment=RUST_LOG=info
+
+# Hardening (docs/deployment §1)
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+LimitCORE=0
+UMask=0077
 
 [Install]
 WantedBy=default.target

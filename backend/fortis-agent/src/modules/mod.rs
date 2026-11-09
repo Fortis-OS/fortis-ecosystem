@@ -1,5 +1,5 @@
-pub mod actions;
-pub mod telemetry;
 pub mod files;
+pub mod input;
+pub mod phone;
+pub mod system;
 pub mod vault;
-pub mod backup;
