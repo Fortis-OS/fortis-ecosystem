@@ -26,20 +26,9 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
 
     info!("Listening for IPC on {}", socket_path);
 
-    // Initialize DB (simplified for now)
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let db_dir = PathBuf::from(home).join(".local/share/fortis");
-    fs::create_dir_all(&db_dir)?;
-    let db_path = db_dir.join("vault.db");
-    
-    let db = Database::open(db_path, "dev_master_key")?;
-    db.init_schema()?;
-    let db = Arc::new(Mutex::new(db));
-
     loop {
         match listener.accept().await {
             Ok((mut socket, _addr)) => {
-                let db_clone = Arc::clone(&db);
                 tokio::spawn(async move {
                     let mut buf = vec![0; 4096];
                     loop {
@@ -63,27 +52,15 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
                                         notes: "Added via CLI".to_string(),
                                     };
                                     
-                                    let db_lock = db_clone.lock().await;
-                                    match db_lock.add_entry(&new_entry) {
-                                        Ok(_) => format!("Success: Added entry '{}' to database.", title),
-                                        Err(e) => format!("Error: Failed to add entry: {}", e)
-                                    }
-                                } else if request.starts_with("GET") {
-                                    let db_lock = db_clone.lock().await;
-                                    match db_lock.get_entries() {
-                                        Ok(entries) => {
-                                            format!("Found {} entries in vault.\n{:#?}", entries.len(), entries)
+                                    match crate::modules::vault::get_db() {
+                                        Ok(db) => {
+                                            match db.add_entry(&new_entry) {
+                                                Ok(_) => format!("Success: Added entry '{}' to database.", title),
+                                                Err(e) => format!("Error: Failed to add entry: {}", e)
+                                            }
                                         }
-                                        Err(e) => format!("Error: Failed to get entries: {}", e)
+                                        Err(e) => format!("Error: {}", e)
                                     }
-                                } else if request.starts_with("SYNC") {
-                                    "Started P2P Syncing over Tailscale... (stub)".to_string()
-                                } else if request.starts_with("AUTH_CHALLENGE") {
-                                    // Relays biometric challenge via gRPC
-                                    crate::modules::auth::relay_challenge().await
-                                } else if request.starts_with("PAIR_START") {
-                                    let code = crate::modules::auth::generate_pairing_code();
-                                    format!("Pairing Code: {}\nEnter this on your mobile device to complete pairing.", code)
                                 } else {
                                     format!("Processed unknown command: {}", request)
                                 };

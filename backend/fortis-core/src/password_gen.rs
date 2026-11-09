@@ -1,4 +1,4 @@
-use rand::seq::SliceRandom;
+
 use rand::Rng;
 
 pub struct PasswordGenerator {

@@ -1,9 +1,6 @@
 [workspace]
 members = [
     "fortis-core",
-    "fortis-sync",
-    "fortis-bindings",
-    "fortis-agent",
-    "fortis-pam"
-]
+    "fortis-agent"
+, "fortis-bindings"]
 resolver = "2"

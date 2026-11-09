@@ -694,6 +694,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -709,10 +711,12 @@ internal interface UniffiLib : Library {
         
     }
 
-    fun uniffi_fortis_bindings_fn_func_generate_secure_password(`length`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_fortis_bindings_fn_func_fortis_decrypt_entry(`vaultKeyBytes`: RustBuffer.ByValue,`encryptedEntry`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_fortis_bindings_fn_func_get_totp(`secretBase32`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_fortis_bindings_fn_func_fortis_generate_totp(`secretBase32`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_fortis_totp_remaining_seconds(uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
     fun ffi_fortis_bindings_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun ffi_fortis_bindings_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -825,9 +829,11 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_fortis_bindings_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_fortis_bindings_checksum_func_generate_secure_password(
+    fun uniffi_fortis_bindings_checksum_func_fortis_decrypt_entry(
     ): Short
-    fun uniffi_fortis_bindings_checksum_func_get_totp(
+    fun uniffi_fortis_bindings_checksum_func_fortis_generate_totp(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_fortis_totp_remaining_seconds(
     ): Short
     fun ffi_fortis_bindings_uniffi_contract_version(
     ): Int
@@ -846,10 +852,13 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
-    if (lib.uniffi_fortis_bindings_checksum_func_generate_secure_password() != 57439.toShort()) {
+    if (lib.uniffi_fortis_bindings_checksum_func_fortis_decrypt_entry() != 2298.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_fortis_bindings_checksum_func_get_totp() != 6185.toShort()) {
+    if (lib.uniffi_fortis_bindings_checksum_func_fortis_generate_totp() != 16930.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_fortis_totp_remaining_seconds() != 4567.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -892,23 +901,23 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
 /** Used to instantiate an interface without an actual pointer, for fakes in tests, mostly. */
 object NoPointer
 
-public object FfiConverterUInt: FfiConverter<UInt, Int> {
-    override fun lift(value: Int): UInt {
-        return value.toUInt()
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
     }
 
-    override fun read(buf: ByteBuffer): UInt {
-        return lift(buf.getInt())
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
     }
 
-    override fun lower(value: UInt): Int {
-        return value.toInt()
+    override fun lower(value: ULong): Long {
+        return value.toLong()
     }
 
-    override fun allocationSize(value: UInt) = 4UL
+    override fun allocationSize(value: ULong) = 8UL
 
-    override fun write(value: UInt, buf: ByteBuffer) {
-        buf.putInt(value.toInt())
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
     }
 }
 
@@ -964,20 +973,124 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
         buf.putInt(byteBuf.limit())
         buf.put(byteBuf)
     }
-} fun `generateSecurePassword`(`length`: kotlin.UInt): kotlin.String {
-            return FfiConverterString.lift(
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_generate_secure_password(
-        FfiConverterUInt.lower(`length`),_status)
+}
+
+public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
+    override fun read(buf: ByteBuffer): ByteArray {
+        val len = buf.getInt()
+        val byteArr = ByteArray(len)
+        buf.get(byteArr)
+        return byteArr
+    }
+    override fun allocationSize(value: ByteArray): ULong {
+        return 4UL + value.size.toULong()
+    }
+    override fun write(value: ByteArray, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        buf.put(value)
+    }
+}
+
+
+
+
+
+sealed class BindingException: Exception() {
+    
+    class CryptoException(
+        
+        val `msg`: kotlin.String
+        ) : BindingException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
+    class TotpException(
+        
+        val `msg`: kotlin.String
+        ) : BindingException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<BindingException> {
+        override fun lift(error_buf: RustBuffer.ByValue): BindingException = FfiConverterTypeBindingError.lift(error_buf)
+    }
+
+    
+}
+
+public object FfiConverterTypeBindingError : FfiConverterRustBuffer<BindingException> {
+    override fun read(buf: ByteBuffer): BindingException {
+        
+
+        return when(buf.getInt()) {
+            1 -> BindingException.CryptoException(
+                FfiConverterString.read(buf),
+                )
+            2 -> BindingException.TotpException(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: BindingException): ULong {
+        return when(value) {
+            is BindingException.CryptoException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
+            is BindingException.TotpException -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
+        }
+    }
+
+    override fun write(value: BindingException, buf: ByteBuffer) {
+        when(value) {
+            is BindingException.CryptoException -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+            is BindingException.TotpException -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`msg`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+    @Throws(BindingException::class) fun `fortisDecryptEntry`(`vaultKeyBytes`: kotlin.ByteArray, `encryptedEntry`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_fortis_decrypt_entry(
+        FfiConverterByteArray.lower(`vaultKeyBytes`),FfiConverterByteArray.lower(`encryptedEntry`),_status)
 }
     )
     }
     
- fun `getTotp`(`secretBase32`: kotlin.String): kotlin.String {
+
+    @Throws(BindingException::class) fun `fortisGenerateTotp`(`secretBase32`: kotlin.String): kotlin.String {
             return FfiConverterString.lift(
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_get_totp(
+    uniffiRustCallWithError(BindingException) { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_fortis_generate_totp(
         FfiConverterString.lower(`secretBase32`),_status)
+}
+    )
+    }
+    
+ fun `fortisTotpRemainingSeconds`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_fortis_totp_remaining_seconds(
+        _status)
 }
     )
     }

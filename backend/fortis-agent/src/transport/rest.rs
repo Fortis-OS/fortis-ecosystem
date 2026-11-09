@@ -48,12 +48,8 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
         .route("/files/download", get(handle_file_download))
         .route("/backup/logs", get(handle_logs))
         .route("/vault/entries", get(handle_vault_entries).post(handle_add_vault_entry))
-        .route("/input", get(handle_input_socket))
+        .route("/vault/unlock", post(handle_vault_unlock))
         .route_layer(middleware::from_fn(auth_middleware));
-
-    let public_routes = Router::new()
-        .route("/pair", post(handle_pair))
-        .route("/auth/unlock", post(handle_auth_unlock));
 
     let cors = CorsLayer::new()
         .allow_methods(vec![Method::GET, Method::POST, Method::OPTIONS])
@@ -62,7 +58,6 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error + Send + Syn
 
     let app = Router::new()
         .nest("/api/v1", v1_routes)
-        .nest("/api/v1", public_routes)
         .layer(cors);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
@@ -192,12 +187,7 @@ async fn handle_logs() -> Result<String, StatusCode> {
 }
 
 async fn handle_vault_entries() -> Result<Json<serde_json::Value>, StatusCode> {
-    // Open the local database directly for simplicity. 
-    // In a fully unified system, this might be shared via Arc<Mutex<Database>> from main.
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let db_path = std::path::PathBuf::from(home).join(".local/share/fortis/vault.db");
-    
-    if let Ok(db) = fortis_core::db::Database::open(db_path, "dev_master_key") {
+    if let Ok(db) = crate::modules::vault::get_db() {
         if let Ok(entries) = db.get_entries() {
             // Serialize to JSON, handling SecretString zeroization correctly
             return Ok(Json(serde_json::to_value(entries).unwrap_or(json!([]))));
@@ -218,10 +208,7 @@ struct NewVaultEntryPayload {
 }
 
 async fn handle_add_vault_entry(axum::Json(payload): axum::Json<NewVaultEntryPayload>) -> Result<Json<serde_json::Value>, StatusCode> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let db_path = std::path::PathBuf::from(home).join(".local/share/fortis/vault.db");
-    
-    if let Ok(db) = fortis_core::db::Database::open(db_path, "dev_master_key") {
+    if let Ok(db) = crate::modules::vault::get_db() {
         // Map string to enum
         let entry_type = match payload.entry_type.as_str() {
             "Login" => fortis_core::vault::EntryType::Login { 
@@ -260,152 +247,17 @@ async fn handle_add_vault_entry(axum::Json(payload): axum::Json<NewVaultEntryPay
 }
 
 #[derive(Deserialize)]
-struct PairingPayload {
-    code: String,
-    public_key: String,
+struct UnlockPayload {
+    password: String,
 }
 
-async fn handle_pair(axum::Json(payload): axum::Json<PairingPayload>) -> Result<Json<serde_json::Value>, StatusCode> {
-    // Check if code matches
-    let mut code_lock = crate::modules::auth::ACTIVE_PAIRING_CODE.write().unwrap();
-    
-    if let Some(active_code) = code_lock.clone() {
-        if active_code == payload.code {
-            // Success! Save the device.
-            *code_lock = None; // Invalidate the code
-            
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            let config_dir = std::path::PathBuf::from(home).join(".config/fortis");
-            std::fs::create_dir_all(&config_dir).unwrap_or_default();
-            let paired_file = config_dir.join("paired_devices.json");
-            
-            // Note: Currently only supporting one device for simplicity, this would normally append.
-            let device_json = json!({
-                "devices": [
-                    {
-                        "public_key": payload.public_key,
-                        "paired_at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
-                    }
-                ]
-            });
-            
-            if std::fs::write(&paired_file, serde_json::to_string_pretty(&device_json).unwrap()).is_ok() {
-                return Ok(Json(json!({ "status": "success", "message": "Paired successfully." })));
-            }
-        }
-    }
-    
-    Err(StatusCode::UNAUTHORIZED)
-}
-
-#[derive(Deserialize)]
-struct AuthUnlockPayload {
-    domain: String,
-}
-
-async fn handle_auth_unlock(axum::Json(payload): axum::Json<AuthUnlockPayload>) -> Result<Json<serde_json::Value>, StatusCode> {
-    log::info!("Received biometric unlock request for domain: {}", payload.domain);
-    
-    // Relay the biometric challenge to the mobile device
-    let result = crate::modules::auth::relay_challenge().await;
-    
-    if result.contains("Success") {
-        Ok(Json(json!({ "status": "success" })))
-    } else {
-        Err(StatusCode::UNAUTHORIZED)
-    }
-}
-
-use axum::extract::ws::{WebSocketUpgrade, WebSocket, Message};
-
-async fn handle_input_socket(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_socket)
-}
-
-async fn handle_socket(mut socket: WebSocket) {
-    use tokio::process::Command;
-    use std::process::Stdio;
-    use tokio::io::AsyncWriteExt;
-
-    let mut cmd = match Command::new("xdotool")
-        .arg("-")
-        .env("XDO_DELAY", "0")
-        .stdin(Stdio::piped())
-        .spawn()
-    {
-        Ok(child) => child,
+async fn handle_vault_unlock(axum::Json(payload): axum::Json<UnlockPayload>) -> Result<Json<serde_json::Value>, StatusCode> {
+    match crate::modules::vault::unlock_vault(&payload.password) {
+        Ok(_) => Ok(Json(json!({ "status": "success" }))),
         Err(e) => {
-            log::error!("Failed to start xdotool: {}", e);
-            return;
-        }
-    };
-
-    let mut stdin = cmd.stdin.take().expect("Failed to open stdin");
-    let mut acc_x = 0.0;
-    let mut acc_y = 0.0;
-
-    while let Some(Ok(msg)) = socket.recv().await {
-        if let Message::Text(text) = msg {
-            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&text) {
-                let typ = payload["type"].as_str().unwrap_or("");
-                match typ {
-                    "mousemove" => {
-                        acc_x += payload["dx"].as_f64().unwrap_or(0.0);
-                        acc_y += payload["dy"].as_f64().unwrap_or(0.0);
-                        let ix = acc_x as i32;
-                        let iy = acc_y as i32;
-                        if ix != 0 || iy != 0 {
-                            let _ = stdin.write_all(format!("mousemove_relative -- {} {}\n", ix, iy).as_bytes()).await;
-                            acc_x -= ix as f64;
-                            acc_y -= iy as f64;
-                        }
-                    }
-                    "mouseclick" => {
-                        if let Some(button) = payload["button"].as_i64() {
-                            let _ = stdin.write_all(format!("click {}\n", button).as_bytes()).await;
-                        }
-                    }
-                    "mousedown" => {
-                        if let Some(button) = payload["button"].as_i64() {
-                            let _ = stdin.write_all(format!("mousedown {}\n", button).as_bytes()).await;
-                        }
-                    }
-                    "mouseup" => {
-                        if let Some(button) = payload["button"].as_i64() {
-                            let _ = stdin.write_all(format!("mouseup {}\n", button).as_bytes()).await;
-                        }
-                    }
-                    "scroll" => {
-                        let dy = payload["dy"].as_i64().unwrap_or(0);
-                        if dy > 0 {
-                            let _ = stdin.write_all(format!("click --repeat {} 5\n", dy).as_bytes()).await;
-                        } else if dy < 0 {
-                            let _ = stdin.write_all(format!("click --repeat {} 4\n", -dy).as_bytes()).await;
-                        }
-                        let dx = payload["dx"].as_i64().unwrap_or(0);
-                        if dx > 0 {
-                            let _ = stdin.write_all(format!("click --repeat {} 7\n", dx).as_bytes()).await;
-                        } else if dx < 0 {
-                            let _ = stdin.write_all(format!("click --repeat {} 6\n", -dx).as_bytes()).await;
-                        }
-                    }
-                    "keydown" => {
-                        if let Some(key) = payload["key"].as_str() {
-                            let _ = stdin.write_all(format!("key {}\n", key).as_bytes()).await;
-                        }
-                    }
-                    "type" => {
-                        if let Some(text_payload) = payload["text"].as_str() {
-                            let text_payload = text_payload.replace("'", "'\\''");
-                            let _ = stdin.write_all(format!("type --clearmodifiers '{}'\n", text_payload).as_bytes()).await;
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            log::error!("Unlock failed: {}", e);
+            Err(StatusCode::UNAUTHORIZED)
         }
     }
-    
-    // Kill the xdotool process if socket closes
-    let _ = cmd.kill().await;
 }
+
