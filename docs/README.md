@@ -109,7 +109,7 @@ The code is being brought in line with this specification. Status per area (upda
 | File confinement, action list | **Done** — `/proc`-based telemetry, fixed action list, root-confined files |
 | Pairing + device store | **Done** (agent side) |
 | `pam_fortis` + approvals + events stream | Agent relay + events **done**; `pam_fortis` module not started |
-| fortis-cli | Not started — speaks old protocol |
+| fortis-cli | **Done** — all commands incl. `pair` (QR) and `sudo fortis pam-enroll` |
 | fortis-desktop | Broken build — calls old `Database::open` |
 | Notifications, sessions, remote input, webcam endpoints | **Done** (agent side; tested without real xdotool/ydotool/ffmpeg) |
 | fortis-mobile app — screens (dashboard, control, files, monitor, remote input, webcam, widget, camera sync, notifications) | Built, but talks to the old API with a stored API key |

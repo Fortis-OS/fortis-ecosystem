@@ -108,18 +108,19 @@ The binary is named `fortis` (`[[bin]] name = "fortis"`). Commands:
 | Command | IPC |
 |---|---|
 | `fortis status` | `status` |
-| `fortis init` | `init` (prompts twice) |
-| `fortis unlock` / `fortis lock` | `unlock` / `lock` |
-| `fortis list [query] [--type T]` | `list` |
-| `fortis get <title or id> [--field password\|username\|totp] [--copy]` | `get` / `totp` |
-| `fortis add` / `fortis edit <id>` / `fortis rm <id>` | `add` / `edit` / `delete` |
+| `fortis init [--password-stdin]` | `init` (prompts twice on a terminal) |
+| `fortis unlock [--password-stdin]` / `fortis lock` | `unlock` / `lock` |
+| `fortis list [query] [--type T] [--json]` | `list` |
+| `fortis get <title, id or id-prefix> [--field F] [--copy] [--json]` | `get` / `totp` |
+| `fortis add [--type T] [--from-json FILE\|-]` / `fortis edit <name>` / `fortis rm <name>` | `add` / `edit` / `delete` |
 | `fortis generate [--length N] [--no-symbols]` | `generate` |
 | `fortis pair` | `pair_start` |
 | `fortis devices list` / `fortis devices revoke <id>` | `devices_list` / `devices_revoke` |
 | `sudo fortis pam-enroll` | `pam_devices`, then writes `/etc/fortis/pam/<user>.json` |
 | `fortis backup run` | `backup_run` |
+| `fortis sessions list` / `fortis sessions end [id]` | `sessions_list` / `sessions_end` |
 
-Passwords are read with no echo. `--copy` puts the value on the clipboard and clears it after 30 s. Secrets are printed only when explicitly asked for with `--field`.
+Passwords are read with no echo. `--copy` puts the value on the clipboard and clears it after 30 s (only if the clipboard still holds it). Secrets are printed only when explicitly asked for with `--field` or `--json`. `fortis generate` works without the agent. There is no `change-password` CLI command yet; use the desktop app.
 
 `pam-enroll` runs as root via sudo: it finds the invoking user from `SUDO_UID`, connects to `/run/user/$SUDO_UID/fortis/agent.sock`, and writes the trust file atomically (write temp file, `fsync`, `rename`).
 
