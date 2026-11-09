@@ -234,14 +234,43 @@ The phone signs exactly these bytes (UTF-8) with ECDSA P-256/SHA-256. Fields **M
 ### 4.6 PAM configuration and fail-safety
 
 ```text
-# /etc/pam.d/sudo — first auth line
-auth    sufficient    pam_fortis.so
+# /etc/pam.d/sudo — directly above the first auth line / @include common-auth
+-auth   sufficient    pam_fortis.so
 ```
 
+- The leading **`-`** is required. It tells libpam to skip the line silently if `pam_fortis.so` is missing or can't be loaded, so a deleted, moved or broken module file can never break `sudo`.
 - `pam_fortis` returns only `PAM_SUCCESS` or `PAM_IGNORE`. It **MUST NOT** return `PAM_AUTH_ERR` or any value that blocks the password fallback.
-- It **MUST NOT** panic across the FFI boundary (`catch_unwind` around every entry point → `PAM_IGNORE`).
 - It **MUST NOT** contain any development bypass. There is no "mock success" path in any build profile.
-- Only `sudo` (and optionally `polkit-1`) is supported. Using it in `login`, `sshd` or display-manager stacks is not supported.
+- It only acts for the services named in its `services=` argument (default `sudo,sudo-i`); for any other service it returns `PAM_IGNORE` at once. It is not supported in `login`, `sshd`, display-manager or `common-auth` stacks.
+
+### 4.7 Lockout safeguards
+
+A sudo lockout is the worst failure Fortis can cause, so the module and its installation follow these extra rules.
+
+**Module construction**
+
+| Rule | Why |
+|---|---|
+| Every exported function body runs inside `catch_unwind`; any panic → `PAM_IGNORE` | A Rust panic must never unwind into `sudo` |
+| The crate is built with `panic = "unwind"` (never `abort`) | `catch_unwind` only works with unwinding |
+| No threads, no async runtime, no global state, std + `fortis-core` (no `db` feature) + `libc` only | Less code that can crash inside `sudo` |
+| `unsafe` only in the thin FFI layer (reading PAM items, the conversation message, `getpwnam_r`, `gethostname`); all logic is safe Rust with unit tests | Crash-level bugs live in unsafe code |
+| A **hard deadline** of `timeout + 2 s` from entry. Every socket operation uses a timeout computed from what is left; when the deadline passes the module returns `PAM_IGNORE` | A bug or a stuck agent can't hang `sudo` |
+| Reads are size-limited (trust file 64 KiB, agent reply 64 KiB) | No unbounded allocation |
+| Nothing is written to stdout/stderr; user messages go through the PAM conversation (`PAM_TEXT_INFO`), diagnostics only to syslog with `debug` | Doesn't corrupt `sudo`'s terminal I/O |
+
+**Installation** (done by `sudo fortis pam-install`, never by hand-editing):
+
+1. The module must already be installed in the system PAM module directory (`/usr/lib/x86_64-linux-gnu/security/` on Debian/Ubuntu, `/usr/lib64/security/` on Fedora), owned by root and not group/world-writable.
+2. **Stage 1 — test service.** `pam-install` writes `/etc/pam.d/fortis-test` (Fortis followed by `pam_deny.so`). `sudo fortis pam-test` runs a real PAM conversation against it. `sudo` itself is untouched.
+3. **Stage 2 — sudo.** Only `sudo fortis pam-install --sudo` edits `/etc/pam.d/sudo`, and only after `pam-test` has passed **for the module file currently installed** (`pam-test` records the module's SHA-256 in `/etc/fortis/pam-test.ok`; a rebuilt or upgraded module must be tested again). It:
+   - copies the original to `/etc/pam.d/sudo.fortis-backup` (never overwriting an existing backup),
+   - inserts exactly one `-auth sufficient pam_fortis.so` line directly above the first `auth` line or `@include common-auth`,
+   - writes the file atomically (temp file, fsync, rename; root `0644`),
+   - re-reads it and checks that the only difference from the original is that one line; otherwise restores the original and fails.
+4. `sudo fortis pam-uninstall` removes every `pam_fortis` line from `/etc/pam.d/sudo` (same atomic write and check) and deletes `/etc/pam.d/fortis-test`.
+
+**Recovery that doesn't need `sudo`**: `pkexec` uses its own PAM service (`polkit-1`), which Fortis never touches, so `pkexec fortis pam-uninstall` or `pkexec cp /etc/pam.d/sudo.fortis-backup /etc/pam.d/sudo` works even if `sudo` were broken. Keep a `sudo -s` shell open while enabling Stage 2 as a second way back.
 
 ---
 
@@ -467,6 +496,7 @@ There is **no remote shell / terminal** feature. Use SSH over Tailscale (`tailsc
 - [ ] Auto-lock works and zeroises keys
 - [ ] Unlock back-off works
 - [ ] `pam_fortis` verifies signatures against `/etc/fortis/pam/<user>.json` itself; returns only `PAM_SUCCESS`/`PAM_IGNORE`; no mock path
+- [ ] PAM line is `-auth sufficient pam_fortis.so`; module has the hard deadline, `catch_unwind` everywhere, `panic = "unwind"`; installed only via `pam-install` after a passing `pam-test`
 - [ ] IPC socket in `$XDG_RUNTIME_DIR`, peer-UID checked
 - [ ] File endpoints confined to roots; drop filenames sanitised
 - [ ] File permissions match §7.1

@@ -87,11 +87,9 @@ printf '{"id":1,"cmd":"status","args":{}}\n' | nc -U $DEV_HOME/run/fortis/agent.
 
 `fortis-pam` keeps its logic in a plain Rust function, `authenticate(cfg: &PamConfig, io: &mut dyn AgentIo) -> Decision`, with the trust-file path and socket path injected. Unit tests cover: missing file, bad permissions, wrong signature, wrong request ID, expired, deny, approve. Only the thin `pam_sm_authenticate` wrapper is untested outside a real PAM stack.
 
-For a real-stack test use a disposable VM or container with its own `/etc/pam.d/fortis-test` service and `pamtester`:
+Real-PAM tests run without root: a test harness calls libpam's `pam_start_confdir` with a temporary config directory, inside a user + mount namespace (`unshare -rm`) with an overlay on `/etc` so `/etc/fortis/pam/<user>.json` can be created as namespace-root. A fake agent socket answers with signed approvals. It covers approve, deny, bad signature, agent missing, agent hanging (deadline), and module file missing (the `-auth` line is skipped).
 
-```bash
-pamtester fortis-test "$USER" authenticate
-```
+On a real machine, `sudo fortis pam-test` exercises the installed module through the `fortis-test` service before `sudo` is ever changed.
 
 ---
 
@@ -117,6 +115,7 @@ The binary is named `fortis` (`[[bin]] name = "fortis"`). Commands:
 | `fortis pair` | `pair_start` |
 | `fortis devices list` / `fortis devices revoke <id>` | `devices_list` / `devices_revoke` |
 | `sudo fortis pam-enroll` | `pam_devices`, then writes `/etc/fortis/pam/<user>.json` |
+| `sudo fortis pam-install [--sudo]` / `sudo fortis pam-test` / `sudo fortis pam-uninstall` | — (edits `/etc/pam.d`, runs a PAM conversation; security §4.7) |
 | `fortis backup run` | `backup_run` |
 | `fortis sessions list` / `fortis sessions end [id]` | `sessions_list` / `sessions_end` |
 

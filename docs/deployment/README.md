@@ -64,41 +64,66 @@ Restart fortis-desktop afterwards.
 
 ## 2. pam_fortis
 
-### Install
+Never hand-edit PAM files for Fortis. The steps below follow the lockout safeguards in security §4.7.
+
+### 1. Install the module file
 
 ```bash
 cd fortis-backend
 cargo build --release -p fortis-pam
-sudo install -Dm644 target/release/libfortis_pam.so /usr/lib/security/pam_fortis.so      # Debian/Ubuntu
-# Fedora: /usr/lib64/security/pam_fortis.so
+# Debian/Ubuntu (multiarch directory — /usr/lib/security is NOT searched):
+sudo install -o root -g root -m 0644 target/release/libfortis_pam.so /usr/lib/x86_64-linux-gnu/security/pam_fortis.so
+# Fedora:
+# sudo install -o root -g root -m 0644 target/release/libfortis_pam.so /usr/lib64/security/pam_fortis.so
+```
+
+### 2. Trust your phone
+
+```bash
 sudo fortis pam-enroll
 ```
 
-`pam-enroll` writes `/etc/fortis/pam/<user>.json` (root:root `0644`, directory `0755`). Re-run it after pairing or revoking a phone.
+Writes `/etc/fortis/pam/<user>.json` (root:root `0644`, directories `0755`). Re-run it after pairing or revoking a phone.
 
-### PAM stack
+### 3. Test without touching sudo
 
-`/etc/pam.d/sudo`, first `auth` line:
+```bash
+sudo fortis pam-install        # writes /etc/pam.d/fortis-test only
+sudo fortis pam-test           # approve on the phone → "PASS"; deny/wait → falls through to pam_deny ("FALLBACK OK")
+```
+
+### 4. Enable for sudo
+
+Open a second terminal and run `sudo -s` there first (keep it open). Then:
+
+```bash
+sudo fortis pam-install --sudo
+sudo -k && sudo true           # in a NEW terminal: phone prompt; deny it → normal password prompt
+```
+
+`pam-install --sudo` backs up the file to `/etc/pam.d/sudo.fortis-backup`, inserts exactly one line, and verifies the result:
 
 ```text
-auth    sufficient    pam_fortis.so
+-auth   sufficient    pam_fortis.so
 ```
 
 Optional module arguments:
 
 | Argument | Default | Meaning |
 |---|---|---|
-| `timeout=<secs>` | `30` | Max wait for the phone (1–60). The agent's own `auth.approval_timeout_secs` should be equal or lower. |
-| `debug` | off | Log decisions (never secrets) to the auth log via syslog |
+| `timeout=<secs>` | `30` | Max wait for the phone (1–60). The agent's own `auth.approval_timeout_secs` should be equal or lower. The module's hard deadline is `timeout + 2 s`. |
+| `services=<a,b>` | `sudo,sudo-i` | PAM services the module acts for; any other service → `PAM_IGNORE` immediately |
+| `debug` | off | Log decisions (never secrets) to syslog (`journalctl -t pam_fortis`) |
 
 Behaviour (security §4.6): returns `PAM_SUCCESS` only for a valid phone signature; everything else is `PAM_IGNORE`, so the next line (your password) runs. Do **not** add `pam_fortis` to `login`, `sshd`, `gdm`/`sddm` or `common-auth`.
 
 ### Roll back
 
 ```bash
-sudo sed -i '/pam_fortis/d' /etc/pam.d/sudo
-# or restore the copy made at install time
-sudo cp /etc/pam.d/sudo.fortis-backup /etc/pam.d/sudo
+sudo fortis pam-uninstall          # removes the line and the test service, with the same checks
+# If sudo itself is broken, use pkexec (separate PAM service, never touched by Fortis):
+pkexec fortis pam-uninstall
+pkexec cp /etc/pam.d/sudo.fortis-backup /etc/pam.d/sudo
 ```
 
 ### Revoke a lost phone

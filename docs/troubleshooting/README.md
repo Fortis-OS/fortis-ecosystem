@@ -91,12 +91,19 @@ Expected: changing the master password re-wraps the vault key. On the phone: Set
 
 That is the safe fallback: something failed (agent down, phone offline, timeout, deny, bad signature). The `debug` log says which.
 
+### `sudo fortis pam-install` refuses
+
+- "module not found": install it into the **multiarch** directory on Ubuntu, `/usr/lib/x86_64-linux-gnu/security/pam_fortis.so` (not `/usr/lib/security/`).
+- "module is writable by others / not owned by root": reinstall with `install -o root -g root -m 0644 …`.
+- "run pam-test first": Stage 2 needs a passing `sudo fortis pam-test` run.
+
 ### Locked out of sudo
 
-`pam_fortis` only returns success or "ignore", so it can't block the password prompt on its own. If sudo is broken, the PAM file was edited wrongly:
+`pam_fortis` only returns success or "ignore", is skipped if missing (`-auth`), and gives up after its hard deadline, so it shouldn't be able to block the password prompt. If sudo is broken anyway:
 
-- With a root shell open: `cp /etc/pam.d/sudo.fortis-backup /etc/pam.d/sudo`.
-- Without one: `pkexec cp /etc/pam.d/sudo.fortis-backup /etc/pam.d/sudo`, or boot to recovery mode, `mount -o remount,rw /`, restore the file, reboot.
+- `pkexec fortis pam-uninstall` — pkexec uses the `polkit-1` PAM service, which Fortis never touches.
+- Or with a root shell open: `cp /etc/pam.d/sudo.fortis-backup /etc/pam.d/sudo`.
+- Last resort: boot to recovery mode, `mount -o remount,rw /`, restore `/etc/pam.d/sudo.fortis-backup`, reboot.
 
 ---
 

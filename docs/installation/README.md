@@ -171,25 +171,28 @@ sudo modprobe v4l2loopback
 
 ```bash
 cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backend
-sudo install -Dm644 target/release/libfortis_pam.so /usr/lib/security/pam_fortis.so   # Fedora: /usr/lib64/security/
+cargo build --release -p fortis-pam
+sudo install -o root -g root -m 0644 target/release/libfortis_pam.so /usr/lib/x86_64-linux-gnu/security/pam_fortis.so
+# Fedora: /usr/lib64/security/pam_fortis.so
 sudo fortis pam-enroll          # lists paired phones and key fingerprints; confirm
-sudo cp /etc/pam.d/sudo /etc/pam.d/sudo.fortis-backup
-sudoedit /etc/pam.d/sudo
+sudo fortis pam-install         # Stage 1: test service only — sudo is not touched
+sudo fortis pam-test            # approve on the phone; then run again and deny
 ```
 
-Add this line directly below `#%PAM-1.0`, **above** `@include common-auth` (Ubuntu) or `auth include system-auth` (Fedora):
+Only when both `pam-test` runs behave (approve → PASS, deny → FALLBACK OK), enable it for sudo. Keep a `sudo -s` shell open in another terminal while you do this:
 
-```text
-auth    sufficient    pam_fortis.so
+```bash
+sudo fortis pam-install --sudo
 ```
 
-Test in a new terminal:
+Then, in a **new** terminal:
 
 ```bash
 sudo -k && sudo true     # phone prompts; approve with fingerprint
+sudo -k && sudo true     # deny on the phone → you get the normal password prompt
 ```
 
-Deny on the phone or wait 30 s — you should get the normal password prompt.
+To remove it: `sudo fortis pam-uninstall` (or `pkexec fortis pam-uninstall` if sudo is ever broken).
 
 ## 11. Backups
 
