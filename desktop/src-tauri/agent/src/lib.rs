@@ -20,7 +20,10 @@ pub struct UiError {
 
 impl UiError {
     pub fn new(code: &str, message: impl Into<String>) -> Self {
-        Self { code: code.into(), message: message.into() }
+        Self {
+            code: code.into(),
+            message: message.into(),
+        }
     }
 }
 
@@ -44,7 +47,9 @@ impl Paths {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
             .ok_or_else(|| UiError::new("config", "HOME is not set"))?;
-        Ok(Self { config_dir: base.join("fortis") })
+        Ok(Self {
+            config_dir: base.join("fortis"),
+        })
     }
 }
 
@@ -60,7 +65,10 @@ pub fn read_port(config_dir: &Path) -> u16 {
 
 pub fn read_token(config_dir: &Path) -> UiResult<Zeroizing<String>> {
     let s = std::fs::read_to_string(config_dir.join("agent.token")).map_err(|_| {
-        UiError::new("agent_unreachable", "Fortis agent token not found — is fortis-agent installed and started?")
+        UiError::new(
+            "agent_unreachable",
+            "Fortis agent token not found — is fortis-agent installed and started?",
+        )
     })?;
     let t = s.trim();
     if t.len() < 32 {
@@ -93,10 +101,18 @@ impl Agent {
     }
 
     fn base(&self) -> String {
-        format!("http://127.0.0.1:{}/api/v1", read_port(&self.paths.config_dir))
+        format!(
+            "http://127.0.0.1:{}/api/v1",
+            read_port(&self.paths.config_dir)
+        )
     }
 
-    async fn send(&self, method: &Method, path: &str, body: Option<&Value>) -> UiResult<(u16, Value)> {
+    async fn send(
+        &self,
+        method: &Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> UiResult<(u16, Value)> {
         // Re-read every time so a rotated token works without restarting the app.
         let token = read_token(&self.paths.config_dir)?;
         let url = format!("{}{}", self.base(), path);
@@ -118,8 +134,15 @@ impl Agent {
             }
         })?;
         let status = resp.status().as_u16();
-        let text = resp.text().await.map_err(|e| UiError::new("network", e.to_string()))?;
-        let v: Value = if text.is_empty() { Value::Null } else { serde_json::from_str(&text).unwrap_or(Value::String(text)) };
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| UiError::new("network", e.to_string()))?;
+        let v: Value = if text.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(&text).unwrap_or(Value::String(text))
+        };
         Ok((status, v))
     }
 
@@ -184,7 +207,9 @@ pub fn entry_field(entry: &Value, field: &str) -> Option<String> {
         ("CreditCard", "number" | "cvv" | "cardholder_name") => s(field),
         ("SecureNote", "content") => s("content"),
         ("Identity", "email" | "phone" | "address") => s(field),
-        ("Totp" | "Login", "totp_secret") => inner["totp"]["secret_base32"].as_str().map(String::from),
+        ("Totp" | "Login", "totp_secret") => {
+            inner["totp"]["secret_base32"].as_str().map(String::from)
+        }
         _ => None,
     }
 }
@@ -229,7 +254,9 @@ mod tests {
     async fn sends_token_and_host_and_no_origin() {
         let (port, h) = fake(200, r#"{"state":"locked"}"#).await;
         let t = token_dir(port);
-        let a = Agent::new(Paths { config_dir: t.path().join("fortis") });
+        let a = Agent::new(Paths {
+            config_dir: t.path().join("fortis"),
+        });
         assert_eq!(a.get("/vault/status").await.unwrap()["state"], "locked");
         let req = h.await.unwrap().to_lowercase();
         assert!(req.starts_with("get /api/v1/vault/status "));
@@ -240,10 +267,19 @@ mod tests {
 
     #[tokio::test]
     async fn maps_agent_errors() {
-        let (port, _h) = fake(401, r#"{"error":{"code":"invalid_password","message":"Invalid master password"}}"#).await;
+        let (port, _h) = fake(
+            401,
+            r#"{"error":{"code":"invalid_password","message":"Invalid master password"}}"#,
+        )
+        .await;
         let t = token_dir(port);
-        let a = Agent::new(Paths { config_dir: t.path().join("fortis") });
-        let e = a.post("/vault/unlock", json!({"password":"x"})).await.unwrap_err();
+        let a = Agent::new(Paths {
+            config_dir: t.path().join("fortis"),
+        });
+        let e = a
+            .post("/vault/unlock", json!({"password":"x"}))
+            .await
+            .unwrap_err();
         assert_eq!(e.code, "invalid_password");
         assert_eq!(e.message, "Wrong master password.");
     }
@@ -251,11 +287,21 @@ mod tests {
     #[tokio::test]
     async fn agent_down_and_missing_token() {
         let t = token_dir(1); // nothing listens on port 1
-        let a = Agent::new(Paths { config_dir: t.path().join("fortis") });
-        assert_eq!(a.get("/vault/status").await.unwrap_err().code, "agent_unreachable");
+        let a = Agent::new(Paths {
+            config_dir: t.path().join("fortis"),
+        });
+        assert_eq!(
+            a.get("/vault/status").await.unwrap_err().code,
+            "agent_unreachable"
+        );
         let empty = tempfile::tempdir().unwrap();
-        let a = Agent::new(Paths { config_dir: empty.path().to_path_buf() });
-        assert_eq!(a.get("/vault/status").await.unwrap_err().code, "agent_unreachable");
+        let a = Agent::new(Paths {
+            config_dir: empty.path().to_path_buf(),
+        });
+        assert_eq!(
+            a.get("/vault/status").await.unwrap_err().code,
+            "agent_unreachable"
+        );
     }
 
     #[test]
