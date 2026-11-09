@@ -102,16 +102,16 @@ The code is being brought in line with this specification. Status per area (upda
 | Area | Status |
 |---|---|
 | Vault crypto (Argon2id, HKDF, AAD, random salt) | **Done** in `fortis-core` (37 tests) |
-| Agent listeners & auth (loopback/tailnet, token file, signatures) | Not started — binds `0.0.0.0`, env-var token |
-| Auto-lock, unlock back-off | Not started |
-| Vault CRUD + sync | **Done** in `fortis-core` (create/open/change password, CRUD, tombstones, pull/push/conflicts); agent exposes init/unlock/lock/status/list/add only |
-| IPC JSON protocol + peer-UID check | Not started — plaintext `ADD` only, socket in `/tmp` |
-| File confinement, action list | Not started |
-| Pairing + device store | Not started (removed in v2 purge) |
-| `pam_fortis` + approvals + events stream | Not started (old insecure version removed) |
+| Agent listeners & auth (loopback/tailnet, token file, signatures) | **Done** — 127.0.0.1 + Tailscale IP only, `agent.token`, Host/Origin checks, signed requests with timestamp + nonce |
+| Auto-lock, unlock back-off | **Done** (logind screen-lock signal not wired yet) |
+| Vault CRUD + sync | **Done** — `fortis-core` + all agent vault and sync endpoints |
+| IPC JSON protocol + peer-UID check | **Done** — `$XDG_RUNTIME_DIR/fortis/agent.sock`, root limited to `auth_request` / `pam_devices` |
+| File confinement, action list | **Done** — `/proc`-based telemetry, fixed action list, root-confined files |
+| Pairing + device store | **Done** (agent side) |
+| `pam_fortis` + approvals + events stream | Agent relay + events **done**; `pam_fortis` module not started |
 | fortis-cli | Not started — speaks old protocol |
 | fortis-desktop | Broken build — calls old `Database::open` |
-| Notifications, sessions, remote input, webcam endpoints | Not started (old unauthenticated input endpoint removed) |
+| Notifications, sessions, remote input, webcam endpoints | **Done** (agent side; tested without real xdotool/ydotool/ffmpeg) |
 | fortis-mobile app — screens (dashboard, control, files, monitor, remote input, webcam, widget, camera sync, notifications) | Built, but talks to the old API with a stored API key |
 | fortis-bindings (phone crypto API) | **Done** — key derivation, entry crypto, TOTP, canonical bytes, signature verify |
 | fortis-mobile app — security (per-pairing P-256 keys, signed requests, phone vault, sudo prompts) | Not started — current key code requests Ed25519 (unsupported), sudo service is a stub, vault reads plaintext over the network |

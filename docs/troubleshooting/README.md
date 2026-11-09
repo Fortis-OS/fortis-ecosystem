@@ -136,6 +136,15 @@ journalctl --user -u fortis-agent | grep -i webcam
 - `exclusive_caps=1` in the `v4l2loopback` options (Chrome/Firefox need it).
 - Phone and laptop both on Tailscale — the stream never uses Wi-Fi directly.
 
+### Clipboard / remote input / notifications don't work from the systemd service
+
+The agent runs as a systemd user service and only sees `WAYLAND_DISPLAY` / `DISPLAY` if your desktop session exports them. Most desktops do; if `fortis status` / `/capabilities` shows `clipboard: null` or `input: null`, run once per login (or add it to your session autostart):
+
+```bash
+systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XAUTHORITY
+systemctl --user restart fortis-agent
+```
+
 ### Phone notifications don't appear on the laptop
 
 - Android: Settings → Notification access → Fortis is enabled, and the app is ticked in Fortis → More → Notification mirroring.

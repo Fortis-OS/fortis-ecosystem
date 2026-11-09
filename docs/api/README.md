@@ -125,7 +125,7 @@ No body. → `200 {"state":"locked"}`.
 { "current_password": "…", "new_password": "…" }
 ```
 
-Re-wraps the vault key and rekeys SQLCipher (security §3.2). Paired phones must re-bootstrap (they get `409` with code `conflict` and `message: "vault_key_rewrapped"` on next sync). → `200`.
+Re-wraps the vault key and rekeys SQLCipher (security §3.2). The vault key itself does not change, so paired phones keep syncing without re-entering the password. → `200`.
 
 ### `GET /vault/entries`
 
@@ -316,7 +316,7 @@ Removes the device and closes its event stream. → `200`. Reminder in response:
 The phone opens a WebSocket (signed upgrade request). The agent sends JSON messages, each signed with the agent key:
 
 ```json
-{ "msg": { "type": "sudo_request", "...": "..." }, "agent_sig": "base64 DER over UTF-8 JSON of msg" }
+{ "msg": "{\"type\":\"sudo_request\",…}", "agent_sig": "base64 DER over the UTF-8 bytes of msg" }
 ```
 
 | `type` | Fields | Meaning |
@@ -327,7 +327,7 @@ The phone opens a WebSocket (signed upgrade request). The agent sends JSON messa
 | `vault_state` | `state` | Vault locked/unlocked on the laptop |
 | `ping` | `t` | Every 25 s; phone replies with `{"type":"pong","t":…}` |
 
-The phone verifies `agent_sig` against the agent key it pinned at pairing and drops anything that fails.
+`msg` is the event **as a JSON string**, so the phone verifies the signature over exactly the bytes it received and then parses `msg`. The phone verifies `agent_sig` against the agent key it pinned at pairing and drops anything that fails.
 
 ### `POST /auth/respond` (T)
 
