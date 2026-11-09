@@ -1,10 +1,23 @@
 [package]
 name = "fortis-cli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
+[[bin]]
+name = "fortis"
+path = "src/main.rs"
+
 [dependencies]
-tokio = { version = "1.0", features = ["full"] }
-clap = { version = "4.4", features = ["derive"] }
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
+fortis-core = { path = "../fortis-backend/fortis-core", default-features = false }
+libc = "0.2"
+qrcode = { version = "0.14", default-features = false }
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+zeroize = "1.8"
+
+[dev-dependencies]
+tempfile = "3"
