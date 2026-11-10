@@ -207,6 +207,8 @@ sudo ──► pam_fortis (runs inside sudo, as root)
 
 - The PAM module generates the nonce itself, so the agent cannot pre-compute or replay approvals.
 - The PAM module verifies the signature itself, so a fake or compromised agent can only **deny** service (falls back to password), never grant access.
+- On the phone, **Approve** and **Deny** both need a fingerprint (the approval key signs either answer); **Ignore** signs nothing and the laptop times out to the password. The prompt shows user, laptop, service and tty, blocks screenshots, and expires on the phone's own clock (receipt time + `expires_at − issued_at`, at most 60 s), so a skewed phone clock can't keep a stale prompt open. Pending requests live in memory only.
+- If fingerprints were changed since pairing the approval key is invalidated; the phone says so and the laptop must be re-paired.
 - The wait is bounded at **30 s** (`auth.approval_timeout_secs`, max 60). The user can press Ctrl-C to fall back immediately.
 
 ### 4.4 Canonical approval bytes
@@ -406,7 +408,7 @@ The phone **MUST NOT** store any shared secret for talking to the agent (no bear
 
 | Service | Rule |
 |---|---|
-| Events connection (foreground service) | Outgoing WebSocket only; no listening socket |
+| Events connection (foreground service, type `specialUse`) | Outgoing WebSocket only; no listening socket. Every frame's `agent_sig` is checked against the agent key pinned at pairing; failures are dropped. Restarts after reboot; can be switched off in the app (laptops then just ask for the password) |
 | Webcam stream | See §7.6 — bound to the Tailscale address, token-protected, laptop-only, stops when the screen is left or after 1 h |
 | Bluetooth HID keyboard/mouse | Uses normal Bluetooth pairing with the laptop; no network involved; only active while the remote-input screen is open |
 | Termux `sshd` (backup target) | Separate from the app; key-only auth, used by `fortis-backup`; runs only during a backup session (`fortis-mobile start/stop`) |
