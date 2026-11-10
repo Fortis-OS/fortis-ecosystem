@@ -1,77 +1,68 @@
 package com.fortis.mobile.network
 
+import com.fortis.mobile.data.Device
 import com.fortis.mobile.domain.ActiveDeviceProvider
+import com.fortis.mobile.keys.DeviceKeys
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import com.fortis.mobile.domain.VaultEntry
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import okio.Buffer
+import java.security.SecureRandom
+import java.util.concurrent.TimeUnit
+
+/**
+ * Signs every request to a paired laptop (docs/security §5.3):
+ * X-Fortis-Device, X-Fortis-Timestamp, X-Fortis-Nonce, X-Fortis-Signature
+ * over the canonical bytes built by fortis-bindings (identical to the agent).
+ *
+ * The target laptop travels with the request as a tag, so background jobs
+ * can address a specific laptop without touching the active one.
+ */
+class SigningInterceptor : Interceptor {
+    private val random = SecureRandom()
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val original = chain.request()
+        val device = original.tag(Device::class.java) ?: return chain.proceed(original)
+
+        val bodyBytes = original.body?.let { b -> Buffer().also { b.writeTo(it) }.readByteArray() } ?: ByteArray(0)
+        val ts = System.currentTimeMillis() / 1000
+        val nonce = ByteArray(16).also { random.nextBytes(it) }.joinToString("") { "%02x".format(it) }
+        val url = original.url
+        val pathAndQuery = url.encodedPath + (url.encodedQuery?.let { "?$it" } ?: "")
+        val message = uniffi.fortis_bindings.canonicalRequest(original.method, pathAndQuery, ts.toULong(), nonce, bodyBytes)
+        val signature = DeviceKeys.signRequest(device.uuid, message)
+
+        val builder = original.newBuilder()
+            .header("X-Fortis-Device", device.deviceId)
+            .header("X-Fortis-Timestamp", ts.toString())
+            .header("X-Fortis-Nonce", nonce)
+            .header("X-Fortis-Signature", signature)
+        original.body?.let { builder.method(original.method, bodyBytes.toRequestBody(it.contentType())) }
+        return chain.proceed(builder.build())
+    }
+}
 
 object FortisApiClient {
     private val client = OkHttpClient.Builder()
+        .addInterceptor(SigningInterceptor())
         .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(5, TimeUnit.MINUTES)
         .build()
+
+    /** For WebSockets (events, input): no read timeout. */
+    val streaming: OkHttpClient = client.newBuilder().readTimeout(0, TimeUnit.SECONDS).pingInterval(0, TimeUnit.SECONDS).build()
 
     fun getClient(): OkHttpClient = client
 
-    /**
-     * Builds a request with the given path (e.g. "/api/v1/telemetry").
-     * Automatically injects the Active Device's IP and API key.
-     * Throws an exception if no active device is set.
-     */
-    fun buildRequest(path: String, builderBlock: Request.Builder.() -> Unit = {}): Request {
-        val device = ActiveDeviceProvider.get() 
-            ?: throw IllegalStateException("No active device selected")
-        
-        val builder = Request.Builder()
-            .url("http://${device.ipAddress}:8023$path")
-            .header("Authorization", "Bearer ${device.apiKey}")
-        
-        builder.builderBlock()
-        return builder.build()
-    }
-
-    suspend fun fetchVaultEntries(): List<VaultEntry> = withContext(Dispatchers.IO) {
-        val request = buildRequest("/api/v1/vault/entries") { get() }
-        val response = client.newCall(request).execute()
-        val responseBody = response.body?.string() ?: "[]"
-        if (!response.isSuccessful) {
-            throw Exception("Failed to fetch vault entries: ${response.code}")
-        }
-        
-        val entries = mutableListOf<VaultEntry>()
-        try {
-            val jsonArray = JSONArray(responseBody)
-            for (i in 0 until jsonArray.length()) {
-                val jsonObject = jsonArray.getJSONObject(i)
-                entries.add(VaultEntry.fromJson(jsonObject))
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-        return@withContext entries
-    }
-
-    suspend fun addTotpEntry(title: String, secret: String) = withContext(Dispatchers.IO) {
-        val jsonPayload = org.json.JSONObject().apply {
-            put("title", title)
-            put("notes", "Added via Fortis Mobile")
-            put("entry_type", "Login")
-            put("totp_secret", secret)
-        }.toString()
-
-        val mediaType = "application/json".toMediaTypeOrNull()
-        val requestBody = jsonPayload.toRequestBody(mediaType)
-        val request = buildRequest("/api/v1/vault/entries") { post(requestBody) }
-        
-        val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw Exception("Failed to add TOTP entry: ${response.code}")
-        }
+    /** A signed request to [device] (defaults to the active laptop). */
+    fun buildRequest(path: String, device: Device? = null, builderBlock: Request.Builder.() -> Unit = {}): Request {
+        val d = device ?: ActiveDeviceProvider.get() ?: throw IllegalStateException("No laptop selected")
+        val b = Request.Builder().url(d.baseUrl + path).tag(Device::class.java, d)
+        b.builderBlock()
+        return b.build()
     }
 }

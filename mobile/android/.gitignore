@@ -14,3 +14,6 @@
 .cxx
 local.properties
 .kotlin/
+
+# Built by scripts/build-rust.sh
+app/src/main/jniLibs/

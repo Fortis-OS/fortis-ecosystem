@@ -4,75 +4,58 @@ import android.app.Notification
 import android.content.Context
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.util.Log
-import com.fortis.mobile.network.AgentClient
+import com.fortis.mobile.data.DeviceRepository
+import com.fortis.mobile.network.FortisApiClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 
-class FortisNotificationListener : NotificationListenerService() {
+/** Allow-list of apps whose notifications are mirrored. Empty = off (default). */
+object NotificationMirror {
+    private const val PREFS = "fortis_notify"
+    fun allowed(context: Context): Set<String> =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet("apps", emptySet()) ?: emptySet()
 
-    private val serviceScope = CoroutineScope(Dispatchers.IO)
-    private var lastNotifTime = 0L
+    fun setAllowed(context: Context, pkg: String, on: Boolean) {
+        val s = allowed(context).toMutableSet()
+        if (on) s.add(pkg) else s.remove(pkg)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet("apps", s).apply()
+    }
+}
+
+/**
+ * Mirrors notifications from allow-listed apps to the laptop (docs/security §6.4).
+ * Never sends Fortis' own notifications or ones Android marks secret.
+ */
+class FortisNotificationListener : NotificationListenerService() {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var last = 0L
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        super.onNotificationPosted(sbn)
         sbn ?: return
-
-        // Debounce to prevent flooding
+        val pkg = sbn.packageName
+        if (pkg == packageName || pkg !in NotificationMirror.allowed(this)) return
+        val n = sbn.notification
+        if (n.visibility == Notification.VISIBILITY_SECRET) return
         val now = System.currentTimeMillis()
-        if (now - lastNotifTime < 1000) return
-        lastNotifTime = now
+        if (now - last < 1000) return // max 1 per second
+        last = now
 
-        val packageName = sbn.packageName
-        
-        // Ignore self and system UI
-        if (packageName == applicationContext.packageName || packageName == "com.android.systemui") return
-
-        val extras = sbn.notification.extras
-        val title = extras.getString(Notification.EXTRA_TITLE) ?: ""
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
-
+        val title = n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+        val text = n.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
         if (title.isEmpty() && text.isEmpty()) return
+        val app = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
+        val laptop = DeviceRepository.get(this).defaultLaptop() ?: return
 
-        val pm = applicationContext.packageManager
-        val appName = try {
-            val appInfo = pm.getApplicationInfo(packageName, 0)
-            pm.getApplicationLabel(appInfo).toString()
-        } catch (e: Exception) {
-            packageName
-        }
-
-        val displayTitle = if (title.isEmpty()) appName else "$appName - $title"
-
-        val sharedPrefs = applicationContext.getSharedPreferences("FortisPrefs", Context.MODE_PRIVATE)
-        val ip = sharedPrefs.getString("ip", "") ?: ""
-        val apiKey = sharedPrefs.getString("apiKey", "") ?: ""
-
-        if (ip.isEmpty() || apiKey.isEmpty()) return
-
-        serviceScope.launch {
-            try {
-                val client = AgentClient.getClient(apiKey)
-                val json = JSONObject()
-                    .put("title", displayTitle)
-                    .put("body", text)
-                    .toString()
-                
-                val body = json.toRequestBody("application/json".toMediaType())
-                val request = Request.Builder()
-                    .url("http://$ip:8023/api/v1/notify")
-                    .post(body)
-                    .build()
-                
-                val response = client.newCall(request).execute()
-                response.close()
-            } catch (e: Exception) {
-                Log.e("FortisNotify", "Failed to sync notification: ${e.message}")
+        scope.launch {
+            val body = JSONObject().put("app", app.take(60)).put("title", title.take(120)).put("body", text.take(500))
+                .toString().toRequestBody("application/json".toMediaType())
+            runCatching {
+                FortisApiClient.getClient().newCall(FortisApiClient.buildRequest("/api/v1/notify", laptop) { post(body) }).execute().close()
             }
         }
     }

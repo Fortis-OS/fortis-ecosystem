@@ -19,7 +19,7 @@ import com.fortis.mobile.ui.theme.*
 @Composable
 fun MoreScreen(
     viewModel: FortisViewModel,
-    onOpenWebcam: () -> Unit,
+    onOpenNotificationApps: () -> Unit,
     onOpenVault: () -> Unit,
     onOpenAuthenticator: () -> Unit
 ) {
@@ -59,17 +59,6 @@ fun MoreScreen(
 
         Spacer(modifier = Modifier.height(FortisSpacing.sectionGap))
 
-        // ─── Peripherals ─────────────────────────────────────────
-        FortisSection(title = "PERIPHERALS") {
-            FortisActionButton(
-                text = "REMOTE_WEBCAM",
-                onClick = onOpenWebcam,
-                modifier = Modifier.padding(bottom = FortisSpacing.buttonGap)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(FortisSpacing.sectionGap))
-
         // ─── Security ────────────────────────────────────────────
         FortisSection(title = "SECURITY") {
             FortisActionButton(
@@ -87,14 +76,27 @@ fun MoreScreen(
         Spacer(modifier = Modifier.height(FortisSpacing.sectionGap))
 
         // ─── Background Sync ─────────────────────────────────────
+        var cameraSyncOn by remember { mutableStateOf(com.fortis.mobile.ImageSyncWorker.isEnabled(context)) }
         FortisSection(title = "BACKGROUND_SYNC") {
             FortisActionButton(
-                text = "START_CAMERA_ROLL_SYNC",
+                text = if (cameraSyncOn) "STOP_CAMERA_ROLL_SYNC" else "START_CAMERA_ROLL_SYNC",
                 onClick = {
-                    val workRequest = androidx.work.PeriodicWorkRequestBuilder<com.fortis.mobile.ImageSyncWorker>(1, java.util.concurrent.TimeUnit.DAYS).build()
-                    androidx.work.WorkManager.getInstance(context).enqueueUniquePeriodicWork("CameraSync", androidx.work.ExistingPeriodicWorkPolicy.KEEP, workRequest)
-                    Toast.makeText(context, "Camera Roll Sync Scheduled!", Toast.LENGTH_SHORT).show()
+                    cameraSyncOn = com.fortis.mobile.ImageSyncWorker.setEnabled(context, !cameraSyncOn)
+                    Toast.makeText(context, if (cameraSyncOn) "Daily camera-roll sync on (Wi-Fi only)" else "Camera-roll sync off", Toast.LENGTH_SHORT).show()
                 },
+                modifier = Modifier.padding(bottom = FortisSpacing.buttonGap)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(FortisSpacing.sectionGap))
+
+        FortisSection(title = "NOTIFICATION_MIRRORING") {
+            Text("Off until you pick apps. Only the apps you tick are sent to the laptop.",
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+            FortisActionButton(
+                text = "CHOOSE_APPS",
+                onClick = onOpenNotificationApps,
                 modifier = Modifier.padding(bottom = FortisSpacing.buttonGap)
             )
         }

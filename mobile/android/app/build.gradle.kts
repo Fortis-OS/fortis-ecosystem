@@ -54,6 +54,9 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
     
+    // fortis-bindings (UniFFI) — run scripts/build-rust.sh to produce jniLibs/
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
+
     // FortisMobile Dependencies
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
@@ -73,7 +76,6 @@ dependencies {
 
     // Biometrics and Security
     implementation("androidx.biometric:biometric-ktx:1.2.0-alpha05")
-    implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")
 
     // AppCompat and UI
     implementation("androidx.appcompat:appcompat:1.6.1")

@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import android.os.Build
 import com.fortis.mobile.network.BluetoothHidManager
 import com.fortis.mobile.data.Device
-import com.fortis.mobile.network.AgentClient
 import com.fortis.mobile.network.InputSocketClient
 import com.fortis.mobile.ui.components.FortisSpacing
 import kotlinx.coroutines.delay
@@ -36,7 +35,9 @@ fun RemoteInputScreen(
     var scrollAccY by remember { mutableStateOf(0f) }
 
     var bluetoothManager by remember { mutableStateOf<BluetoothHidManager?>(null) }
-    var useBluetooth by remember { mutableStateOf(false) }
+    // Network mode needs a fingerprint-confirmed session (security §5.6); until
+    // that lands, only Bluetooth HID mode is available.
+    val useBluetooth = true
 
     DisposableEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -111,23 +112,10 @@ fun RemoteInputScreen(
     }
 
 
-    // Connect to websocket when screen opens
     DisposableEffect(device) {
-        val client = InputSocketClient(
-            client = AgentClient.getClient(device.apiKey),
-            hostUrl = "http://${device.ipAddress}:8023" // Assume default port
-        )
-        try {
-            client.connect()
-            socketClient = client
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
 
         onDispose {
-            try {
-                client.disconnect()
-            } catch (e: Exception) {}
+            socketClient?.disconnect()
         }
     }
 
@@ -223,15 +211,16 @@ fun RemoteInputScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Use Bluetooth HID Mode (Zero Latency)",
+                    "Bluetooth keyboard & mouse (network mode needs a fingerprint session — coming next)",
                     modifier = Modifier.weight(1f),
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Switch(
-                    checked = useBluetooth,
-                    onCheckedChange = { useBluetooth = it },
+                    checked = true,
+                    enabled = false,
+                    onCheckedChange = {},
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = MaterialTheme.colorScheme.primary,
                         checkedTrackColor = MaterialTheme.colorScheme.surfaceVariant

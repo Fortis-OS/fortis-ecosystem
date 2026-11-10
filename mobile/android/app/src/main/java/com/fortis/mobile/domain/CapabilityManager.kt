@@ -1,26 +1,21 @@
 package com.fortis.mobile.domain
 
 import com.fortis.mobile.data.Device
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import org.json.JSONObject
 
+/**
+ * Reads GET /capabilities (docs/api §5). Values are booleans or tool names
+ * (e.g. "clipboard": "wl-copy", "input": "ydotool"); null/false = unavailable.
+ */
 object CapabilityManager {
-    private val gson = Gson()
-
-    fun getCapabilities(device: Device?): Map<String, Boolean> {
-        if (device == null || device.capabilitiesJson.isEmpty()) {
-            return emptyMap()
-        }
-        return try {
-            val type = object : TypeToken<Map<String, Boolean>>() {}.type
-            gson.fromJson(device.capabilitiesJson, type) ?: emptyMap()
-        } catch (e: Exception) {
-            emptyMap()
-        }
-    }
-
     fun hasCapability(device: Device?, capability: String): Boolean {
-        val caps = getCapabilities(device)
-        return caps[capability] == true
+        if (device == null) return false
+        val o = runCatching { JSONObject(device.capabilitiesJson) }.getOrNull() ?: return false
+        if (!o.has(capability) || o.isNull(capability)) return false
+        return when (val v = o.get(capability)) {
+            is Boolean -> v
+            is String -> v.isNotEmpty()
+            else -> false
+        }
     }
 }

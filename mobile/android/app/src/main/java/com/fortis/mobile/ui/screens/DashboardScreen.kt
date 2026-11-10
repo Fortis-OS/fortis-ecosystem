@@ -42,7 +42,6 @@ fun DashboardScreen(
     val activeDevice by viewModel.activeDevice.collectAsState()
 
     val ip = activeDevice?.ipAddress ?: ""
-    val apiKey = activeDevice?.apiKey ?: ""
 
     // Telemetry state
     var uptime by remember { mutableStateOf("--") }
@@ -83,7 +82,7 @@ fun DashboardScreen(
             message = "Are you sure you want to force a laptop backup?",
             onConfirm = {
                 showBackupDialog = false
-                if (ip.isEmpty() || apiKey.isEmpty()) {
+                if (ip.isEmpty()) {
                     Toast.makeText(context, "Set IP/Key in Workspace!", Toast.LENGTH_SHORT).show()
                     return@FortisConfirmDialog
                 }
@@ -109,7 +108,7 @@ fun DashboardScreen(
                             val client = FortisApiClient.getClient()
                             val json = """{"action":"run_backup"}"""
                             val body = json.toRequestBody("application/json".toMediaType())
-                            val request = FortisApiClient.buildRequest("/api/v1/action") { post(body) }
+                            val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
                             client.newCall(request).execute().close()
                         }
                     } catch (e: Exception) {}
@@ -150,7 +149,7 @@ fun DashboardScreen(
 
     // Auto-refresh telemetry
     LaunchedEffect(Unit) {
-        if (ip.isNotEmpty() && apiKey.isNotEmpty()) {
+        if (ip.isNotEmpty()) {
             while (true) {
                 try {
                     withContext(Dispatchers.IO) {
@@ -158,13 +157,8 @@ fun DashboardScreen(
                         val request = FortisApiClient.buildRequest("/api/v1/telemetry") { get() }
                         client.newCall(request).execute().use { response ->
                             val bodyStr = response.body?.string() ?: "{}"
-                            val json = JSONObject(bodyStr)
-                            uptime = json.optString("uptime", "Unknown").replace("\n", "")
-                            cpu = json.optString("cpu", "--")
-                            mem = "${json.optString("mem_used", "--")} / ${json.optString("mem_total", "--")}"
-                            swap = "${json.optString("swap_used", "--")} / ${json.optString("swap_total", "--")}"
-                            storage = "${json.optString("storage_used", "--")} / ${json.optString("storage_total", "--")}"
-                            temp = json.optString("temp", "--")
+                            val t = com.fortis.mobile.network.Telemetry.parse(bodyStr)
+                            uptime = t.uptime; cpu = t.cpu; mem = t.mem; swap = t.swap; storage = t.storage; temp = t.temp
                         }
                     }
                 } catch (e: Exception) {}
@@ -375,7 +369,7 @@ fun DashboardScreen(
                                 try {
                                     withContext(Dispatchers.IO) {
                                         val client = FortisApiClient.getClient()
-                                        val body = text.toRequestBody("text/plain".toMediaType())
+                                        val body = org.json.JSONObject().put("text", text).toString().toRequestBody("application/json".toMediaType())
                                         val request = FortisApiClient.buildRequest("/api/v1/clipboard") { post(body) }
                                         client.newCall(request).execute().close()
                                     }

@@ -3,7 +3,6 @@ package com.fortis.mobile.ui.screens
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
-import android.app.DownloadManager
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -45,7 +44,6 @@ fun FilesScreen(viewModel: FortisViewModel) {
     val activeDevice by viewModel.activeDevice.collectAsState()
 
     val ip = activeDevice?.ipAddress ?: ""
-    val apiKey = activeDevice?.apiKey ?: ""
     val coroutineScope = rememberCoroutineScope()
     val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
 
@@ -80,7 +78,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
             message = "Are you sure you want to force a laptop backup?",
             onConfirm = {
                 showBackupDialog = false
-                if (ip.isEmpty() || apiKey.isEmpty()) {
+                if (ip.isEmpty()) {
                     Toast.makeText(context, "Set IP/Key in Workspace!", Toast.LENGTH_SHORT).show()
                     return@FortisConfirmDialog
                 }
@@ -106,7 +104,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
                             val client = FortisApiClient.getClient()
                             val json = """{"action":"run_backup"}"""
                             val body = json.toRequestBody("application/json".toMediaType())
-                            val request = FortisApiClient.buildRequest("/api/v1/action") { post(body) }
+                            val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
                             client.newCall(request).execute().close()
                         }
                     } catch (e: Exception) {}
@@ -157,7 +155,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
-            if (ip.isEmpty() || apiKey.isEmpty()) return@rememberLauncherForActivityResult
+            if (ip.isEmpty()) return@rememberLauncherForActivityResult
             if (!ensureTailscaleActive(context)) return@rememberLauncherForActivityResult
             totalFiles = uris.size
             currentFileIndex = 0
@@ -213,7 +211,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
                                         .addFormDataPart("file", fileName, streamBody)
                                         .build()
 
-                                    val request = FortisApiClient.buildRequest("/api/v1/files/drop") { post(requestBody) }
+                                    val request = FortisApiClient.buildRequest("/api/v1/files/drop?dest=drop") { post(requestBody) }
 
                                     client.newCall(request).execute().close()
                                     successCount++
@@ -235,21 +233,20 @@ fun FilesScreen(viewModel: FortisViewModel) {
     }
 
     fun fetchFiles(path: String) {
-        if (ip.isEmpty() || apiKey.isEmpty()) return
+        if (ip.isEmpty()) return
         isLoading = true
         coroutineScope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     val client = FortisApiClient.getClient()
-                    val json = JSONObject().put("path", path).toString()
-                    val body = json.toRequestBody("application/json".toMediaType())
-                    val request = FortisApiClient.buildRequest("/api/v1/files/list") { post(body) }
+                    val q = if (path.isEmpty()) "" else "?path=" + android.net.Uri.encode(path)
+                    val request = FortisApiClient.buildRequest("/api/v1/files/list$q") { get() }
                     val response = client.newCall(request).execute()
                     val responseBody = response.body?.string() ?: ""
                     if (response.isSuccessful) {
                         val jsonObj = JSONObject(responseBody)
                         val returnedPath = jsonObj.optString("path", "")
-                        val filesArray = jsonObj.optJSONArray("files")
+                        val filesArray = jsonObj.optJSONArray("entries")
                         val newList = mutableListOf<RemoteFile>()
                         if (filesArray != null) {
                             for (i in 0 until filesArray.length()) {
@@ -319,7 +316,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
                             try {
                                 withContext(Dispatchers.IO) {
                                     val client = FortisApiClient.getClient()
-                                    val body = text.toRequestBody("text/plain".toMediaType())
+                                    val body = org.json.JSONObject().put("text", text).toString().toRequestBody("application/json".toMediaType())
                                     val request = FortisApiClient.buildRequest("/api/v1/clipboard") { post(body) }
                                     client.newCall(request).execute().close()
                                 }
@@ -395,18 +392,15 @@ fun FilesScreen(viewModel: FortisViewModel) {
                                 fetchFiles(nextPath)
                             } else {
                                 val filePath = if (currentPath.endsWith("/")) currentPath + file.name else currentPath + "/" + file.name
-                                val downloadUrl = "http://$ip:8023/api/v1/files/download?path=${android.net.Uri.encode(filePath)}"
-
-                                val request = DownloadManager.Request(android.net.Uri.parse(downloadUrl))
-                                    .setTitle(file.name)
-                                    .setDescription("Downloading from Laptop")
-                                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, file.name)
-                                request.addRequestHeader("Authorization", "Bearer $apiKey")
-
-                                val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                                dm.enqueue(request)
                                 Toast.makeText(context, "Downloading ${file.name}...", Toast.LENGTH_SHORT).show()
+                                coroutineScope.launch {
+                                    val msg = try {
+                                        "Saved to " + withContext(Dispatchers.IO) { com.fortis.mobile.network.Downloads.download(context, filePath, file.name) }
+                                    } catch (e: Exception) {
+                                        "Download failed: ${e.message}"
+                                    }
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                }
                             }
                         },
                     colors = CardDefaults.cardColors(

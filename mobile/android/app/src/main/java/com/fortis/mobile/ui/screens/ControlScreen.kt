@@ -34,7 +34,6 @@ fun ControlScreen(
     val activeDevice by viewModel.activeDevice.collectAsState()
 
     val ip = activeDevice?.ipAddress ?: ""
-    val apiKey = activeDevice?.apiKey ?: ""
     val coroutineScope = rememberCoroutineScope()
 
     var showShutdownDialog by remember { mutableStateOf(false) }
@@ -55,7 +54,7 @@ fun ControlScreen(
             message = "Are you sure you want to shut down the laptop?",
             onConfirm = {
                 showShutdownDialog = false
-                if (ip.isEmpty() || apiKey.isEmpty()) {
+                if (ip.isEmpty()) {
                     Toast.makeText(context, "Set IP/Key in Workspace!", Toast.LENGTH_SHORT).show()
                     return@FortisConfirmDialog
                 }
@@ -65,7 +64,7 @@ fun ControlScreen(
                             val client = FortisApiClient.getClient()
                             val json = """{"action":"shutdown"}"""
                             val body = json.toRequestBody("application/json".toMediaType())
-                            val request = FortisApiClient.buildRequest("/api/v1/action") { post(body) }
+                            val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
                             client.newCall(request).execute().close()
                         }
                         withContext(Dispatchers.Main) {
@@ -81,7 +80,7 @@ fun ControlScreen(
     // Media polling
     LaunchedEffect(Unit) {
         while (true) {
-            if (ip.isNotEmpty() && apiKey.isNotEmpty() && ensureTailscaleActive(context)) {
+            if (ip.isNotEmpty() && ensureTailscaleActive(context)) {
                 try {
                     val client = FortisApiClient.getClient()
                     val request = FortisApiClient.buildRequest("/api/v1/media")
@@ -96,8 +95,8 @@ fun ControlScreen(
                                     mediaAlbum = json.optString("album", "")
                                     mediaSource = json.optString("player", "")
                                     mediaStatus = json.optString("status", "")
-                                    mediaPosition = json.optString("position", "0").toFloatOrNull() ?: 0f
-                                    mediaDuration = json.optString("duration", "0").toFloatOrNull() ?: 0f
+                                    mediaPosition = json.optLong("position_us", 0L).toFloat()
+                                    mediaDuration = json.optLong("length_us", 0L).toFloat()
                                 }
                             }
                         }
@@ -122,7 +121,7 @@ fun ControlScreen(
     }
 
     fun sendAction(action: String, successMessage: String) {
-        if (ip.isEmpty() || apiKey.isEmpty()) {
+        if (ip.isEmpty()) {
             Toast.makeText(context, "Set IP and API Key in Settings first!", Toast.LENGTH_SHORT).show()
             return
         }
@@ -133,7 +132,7 @@ fun ControlScreen(
                     val client = FortisApiClient.getClient()
                     val json = """{"action":"$action"}"""
                     val body = json.toRequestBody("application/json".toMediaType())
-                    val request = FortisApiClient.buildRequest("/api/v1/action") { post(body) }
+                    val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
                     val response = client.newCall(request).execute()
                     response.close()
                 }
@@ -147,19 +146,19 @@ fun ControlScreen(
     }
 
     fun sendActionWithVolumeToast(action: String) {
-        if (ip.isEmpty() || apiKey.isEmpty()) return
+        if (ip.isEmpty()) return
         coroutineScope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     val client = FortisApiClient.getClient()
                     val json = """{"action":"$action"}"""
                     val body = json.toRequestBody("application/json".toMediaType())
-                    val request = FortisApiClient.buildRequest("/api/v1/action") { post(body) }
+                    val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
                     val response = client.newCall(request).execute()
                     if (response.isSuccessful) {
                         response.body?.string()?.let { jsonString ->
                             val jsonObj = JSONObject(jsonString)
-                            val vol = jsonObj.optString("volume", "")
+                            val vol = if (jsonObj.has("volume_percent")) "${jsonObj.optInt("volume_percent")}%" else ""
                             if (vol.isNotEmpty()) {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(context, "Volume: $vol", Toast.LENGTH_SHORT).show()

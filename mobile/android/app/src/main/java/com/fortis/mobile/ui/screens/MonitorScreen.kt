@@ -29,7 +29,6 @@ fun MonitorScreen(viewModel: FortisViewModel) {
     val activeDevice by viewModel.activeDevice.collectAsState()
 
     val ip = activeDevice?.ipAddress ?: ""
-    val apiKey = activeDevice?.apiKey ?: ""
     val coroutineScope = rememberCoroutineScope()
 
     // Telemetry state
@@ -54,7 +53,7 @@ fun MonitorScreen(viewModel: FortisViewModel) {
 
     // Auto-refresh telemetry
     LaunchedEffect(Unit) {
-        if (ip.isNotEmpty() && apiKey.isNotEmpty()) {
+        if (ip.isNotEmpty()) {
             while (true) {
                 try {
                     withContext(Dispatchers.IO) {
@@ -62,13 +61,8 @@ fun MonitorScreen(viewModel: FortisViewModel) {
                         val request = FortisApiClient.buildRequest("/api/v1/telemetry") { get() }
                         client.newCall(request).execute().use { response ->
                             val bodyStr = response.body?.string() ?: "{}"
-                            val json = JSONObject(bodyStr)
-                            uptime = json.optString("uptime", "Unknown").replace("\n", "")
-                            cpu = json.optString("cpu", "--")
-                            mem = "${json.optString("mem_used", "--")} / ${json.optString("mem_total", "--")}"
-                            swap = "${json.optString("swap_used", "--")} / ${json.optString("swap_total", "--")}"
-                            storage = "${json.optString("storage_used", "--")} / ${json.optString("storage_total", "--")}"
-                            temp = json.optString("temp", "--")
+                            val t = com.fortis.mobile.network.Telemetry.parse(bodyStr)
+                            uptime = t.uptime; cpu = t.cpu; mem = t.mem; swap = t.swap; storage = t.storage; temp = t.temp
                         }
                     }
                 } catch (e: Exception) {}
