@@ -1,0 +1,11 @@
+[package]
+name = "fortis-browser-host"
+version = "0.2.0"
+edition = "2024"
+description = "Native-messaging host for the Fortis browser extension (docs/api §6, security §7.7)"
+
+[dependencies]
+serde_json = "1"
+
+[profile.release]
+strip = true

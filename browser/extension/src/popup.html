@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="popup.css">
+  <title>Fortis</title>
+</head>
+<body>
+  <header><span class="logo">FORTIS</span><button id="lock" class="link" hidden>Lock</button></header>
+  <section id="msg" class="msg" hidden></section>
+  <section id="save" class="card" hidden>
+    <div class="q" id="saveQ"></div>
+    <div class="row">
+      <button id="saveBtn" class="primary">Save</button>
+      <button id="neverBtn">Never for this site</button>
+      <button id="dismissBtn" class="link">Not now</button>
+    </div>
+  </section>
+  <form id="unlock" class="card" hidden>
+    <label for="pw">Master password</label>
+    <input id="pw" type="password" autocomplete="off" required>
+    <button class="primary">Unlock</button>
+  </form>
+  <section id="list" hidden>
+    <div class="host" id="host"></div>
+    <ul id="entries"></ul>
+  </section>
+  <script src="popup.js"></script>
+</body>
+</html>
