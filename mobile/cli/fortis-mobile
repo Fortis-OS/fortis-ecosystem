@@ -1,0 +1,339 @@
+#!/usr/bin/env bash
+# ==========================================
+# FORTIS MOBILE CLI
+# FortisMobile Companion for FortisBackup
+# ==========================================
+# Runs inside Termux on Android.
+# Manages the SSH server and backup session lifecycle.
+# The laptop calls: ssh mobile "fortis-mobile status --json"
+#
+# Commands:
+#   status [--json]  Full device/service status
+#   start            Start Backup Mode (sshd + wake lock + notification)
+#   stop             Stop Backup Mode cleanly
+#   health           Exit 0 if ready, exit 1 if not (for scripting)
+#   version          Show version
+#   logs             Show recent session log entries
+
+set -uo pipefail
+
+# Ensure PATH is set for non-interactive SSH sessions
+export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+
+# ==========================================
+# VERSION & CONSTANTS
+# ==========================================
+FM_VERSION="1.0.0"
+FM_LOG="$HOME/.local/share/fortis-mobile/session.log"
+FM_CONF="$HOME/.config/fortis-mobile/fortis-mobile.conf"
+FM_NOTIFICATION_ID="fortismobile_session"
+
+# ==========================================
+# DEFAULTS (overridden by fortis-mobile.conf)
+# ==========================================
+BATTERY_THRESHOLD=20       # % minimum battery to allow backup
+STORAGE_THRESHOLD_GB=5     # GB minimum free storage
+SSHD_PORT=8022             # informational only; sshd reads its own config
+
+# ==========================================
+# LOAD CONFIG
+# ==========================================
+if [[ -f "$FM_CONF" ]]; then
+    # Validate ownership before sourcing
+    CONF_OWNER=$(stat -c "%u" "$FM_CONF" 2>/dev/null || echo "-1")
+    if [[ "$CONF_OWNER" == "$(id -u)" ]]; then
+        # shellcheck source=fortis-mobile.conf
+        source "$FM_CONF"
+    else
+        echo "⚠ Warning: $FM_CONF is not owned by current user. Ignoring." >&2
+    fi
+fi
+
+# ==========================================
+# HELPERS
+# ==========================================
+mkdir -p "$(dirname "$FM_LOG")"
+
+log() {
+    local ts
+    ts=$(date +"%Y-%m-%d %H:%M:%S")
+    echo "[$ts] $*" | tee -a "$FM_LOG"
+}
+
+die() {
+    echo "✖ $*" >&2
+    exit 1
+}
+
+# ==========================================
+# DATA COLLECTION
+# ==========================================
+
+# Returns battery level (integer %) and charging state
+get_battery() {
+    local raw
+    raw=$(termux-battery-status 2>/dev/null) || { echo "0 false"; return; }
+    local level plugged
+    level=$(echo "$raw" | jq -r '.percentage // 0')
+    plugged=$(echo "$raw" | jq -r '.plugged // "UNPLUGGED"')
+    local charging="false"
+    [[ "$plugged" != "UNPLUGGED" ]] && charging="true"
+    echo "$level $charging"
+}
+
+# Returns free storage in GB (integer) for internal storage
+get_storage_gb() {
+    local available_kb
+    # /sdcard is always accessible in Termux (symlink to /storage/emulated/0).
+    # 'df' defaults to 1K-blocks on Termux's Android tools.
+    available_kb=$(df /sdcard 2>/dev/null | tail -1 | awk '{print $4}')
+    if [[ -z "$available_kb" || "$available_kb" == "0" || ! "$available_kb" =~ ^[0-9]+$ ]]; then
+        # Fallback to Termux home partition
+        available_kb=$(df "$HOME" 2>/dev/null | tail -1 | awk '{print $4}')
+    fi
+    echo $(( ${available_kb:-0} / 1048576 ))
+}
+
+# Returns true/false whether sshd process is running
+is_sshd_running() {
+    pgrep -x sshd > /dev/null 2>&1 && echo "true" || echo "false"
+}
+
+# Returns true/false whether Tailscale is connected.
+# Netlink socket permissions block `ip addr` on newer Android versions.
+# only responds if the Tailscale VPN tunnel is active and the laptop is online.
+is_tailscale_connected() {
+    # Check if we can connect to the laptop's Go agent port via TCP.
+    # This bypasses CGNAT ping interception completely.
+    if timeout 1s bash -c '< /dev/tcp/100.96.179.60/8023' 2>/dev/null; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+# ==========================================
+# READINESS CHECK
+# ==========================================
+
+# Evaluates all conditions and returns { ready, reason }.
+# Sets globals: READY (true/false), READY_REASON (null or message).
+evaluate_readiness() {
+    local battery_level=$1
+    local charging=$2
+    local storage_gb=$3
+    local sshd=$4
+    local tailscale=$5
+
+    READY="true"
+    READY_REASON="null"
+
+    # Hard requirements first
+    if [[ "$sshd" == "false" ]]; then
+        READY="false"; READY_REASON="\"sshd not running — run: fortis-mobile start\""; return
+    fi
+    if [[ "$tailscale" == "false" ]]; then
+        READY="false"; READY_REASON="\"Tailscale not connected\""; return
+    fi
+
+    # Threshold checks
+    if [[ "$battery_level" -lt "$BATTERY_THRESHOLD" ]]; then
+        READY="false"
+        READY_REASON="\"battery below threshold (${battery_level}% < ${BATTERY_THRESHOLD}% required)\""
+        return
+    fi
+    if [[ "$storage_gb" -lt "$STORAGE_THRESHOLD_GB" ]]; then
+        READY="false"
+        READY_REASON="\"insufficient storage (${storage_gb}GB free < ${STORAGE_THRESHOLD_GB}GB required)\""
+        return
+    fi
+}
+
+# ==========================================
+# COMMANDS
+# ==========================================
+
+cmd_status() {
+    local json_mode=false
+    [[ "${1:-}" == "--json" ]] && json_mode=true
+
+    # Collect all data
+    read -r battery_level charging <<< "$(get_battery)"
+    local storage_gb sshd tailscale
+    storage_gb=$(get_storage_gb)
+    sshd=$(is_sshd_running)
+    tailscale=$(is_tailscale_connected)
+
+    evaluate_readiness "$battery_level" "$charging" "$storage_gb" "$sshd" "$tailscale"
+
+    if [[ "$json_mode" == true ]]; then
+        # Machine-readable output for laptop consumption
+        cat <<EOF
+{
+  "battery": $battery_level,
+  "charging": $charging,
+  "storage_free_gb": $storage_gb,
+  "sshd": $sshd,
+  "tailscale": $tailscale,
+  "ready": $READY,
+  "reason": $READY_REASON
+}
+EOF
+    else
+        # Human-readable output
+        echo "========================================"
+        echo "       FortisMobile  v${FM_VERSION}     "
+        echo "========================================"
+
+        local charging_label=""
+        [[ "$charging" == "true" ]] && charging_label=" (charging)"
+
+        # Status icons
+        _icon() { [[ "$1" == "true" ]] && echo "✔" || echo "✖"; }
+
+        echo ""
+        printf "  Battery      : %s %s%%%s\n" "$(_icon "$([[ $battery_level -ge $BATTERY_THRESHOLD ]] && echo true || echo false)")" "$battery_level" "$charging_label"
+        printf "  Storage Free : %s %s GB\n"  "$(_icon "$([[ $storage_gb -ge $STORAGE_THRESHOLD_GB ]] && echo true || echo false)")" "$storage_gb"
+        printf "  sshd         : %s\n"         "$(_icon "$sshd")"
+        printf "  Tailscale    : %s\n"         "$(_icon "$tailscale")"
+        echo ""
+
+        if [[ "$READY" == "true" ]]; then
+            echo "  Status: READY ✔"
+        else
+            local reason_plain
+            reason_plain=$(echo "$READY_REASON" | tr -d '"')
+            echo "  Status: NOT READY"
+            echo "  Reason: $reason_plain"
+        fi
+        echo ""
+    fi
+}
+
+cmd_start() {
+    log "=== Backup Mode: START ==="
+
+    # Start sshd if not already running
+    if pgrep -x sshd > /dev/null 2>&1; then
+        log "✔ sshd already running"
+    else
+        log "Starting sshd..."
+        sshd 2>/dev/null
+        sleep 1
+        if pgrep -x sshd > /dev/null 2>&1; then
+            log "✔ sshd started on port $SSHD_PORT"
+        else
+            log "✖ sshd failed to start"
+            die "sshd failed to start. Check Termux sshd configuration."
+        fi
+    fi
+
+    # Acquire CPU wake lock so backup isn't interrupted by Doze
+    termux-wake-lock 2>/dev/null && log "✔ Wake lock acquired" || log "⚠ Wake lock unavailable"
+
+    # Show persistent notification (keeps Termux from being killed)
+    termux-notification \
+        --title "FortisMobile — Backup Active" \
+        --content "SSH ready. Waiting for laptop backup to complete." \
+        --ongoing \
+        --id "$FM_NOTIFICATION_ID" \
+        2>/dev/null && log "✔ Notification shown" || log "⚠ Notification unavailable"
+
+    log "✔ Backup Mode active"
+    log "  Run 'fortis-mobile stop' when backup finishes, or it will be stopped remotely."
+    
+    # Block script execution so Termux Intent does not terminate
+    while pgrep -x sshd > /dev/null 2>&1; do
+        sleep 10
+    done
+}
+
+cmd_stop() {
+    log "=== Backup Mode: STOP ==="
+
+    # Release wake lock
+    termux-wake-unlock 2>/dev/null && log "✔ Wake lock released" || true
+
+    # Remove the persistent notification
+    termux-notification-remove "$FM_NOTIFICATION_ID" 2>/dev/null && log "✔ Notification cleared" || true
+
+    # Stop sshd and close Termux completely in the background
+    if pgrep -x sshd > /dev/null 2>&1; then
+        (
+            sleep 2
+            pkill sshd 2>/dev/null
+            kill -9 -1 2>/dev/null
+        ) >/dev/null 2>&1 &
+        log "✔ sshd will be stopped and Termux closed in 2 seconds"
+    else
+        log "  sshd was not running"
+        ( sleep 2; kill -9 -1 2>/dev/null ) >/dev/null 2>&1 &
+    fi
+
+    log "✔ Backup Mode stopped"
+}
+
+cmd_health() {
+    # Silent pass/fail — for scripting on the laptop.
+    # Exit 0 = ready. Exit 1 = not ready.
+    read -r battery_level charging <<< "$(get_battery)"
+    local storage_gb sshd tailscale
+    storage_gb=$(get_storage_gb)
+    sshd=$(is_sshd_running)
+    tailscale=$(is_tailscale_connected)
+
+    evaluate_readiness "$battery_level" "$charging" "$storage_gb" "$sshd" "$tailscale"
+
+    if [[ "$READY" == "true" ]]; then
+        exit 0
+    else
+        local reason_plain
+        reason_plain=$(echo "$READY_REASON" | tr -d '"')
+        echo "NOT READY: $reason_plain" >&2
+        exit 1
+    fi
+}
+
+cmd_logs() {
+    local lines="${1:-50}"
+    if [[ -f "$FM_LOG" ]]; then
+        tail -n "$lines" "$FM_LOG"
+    else
+        echo "No session log found at $FM_LOG"
+    fi
+}
+
+cmd_version() {
+    echo "fortis-mobile v${FM_VERSION}"
+}
+
+# ==========================================
+# ENTRY POINT
+# ==========================================
+COMMAND="${1:-help}"
+shift 2>/dev/null || true
+
+case "$COMMAND" in
+    status)     cmd_status "${1:-}" ;;
+    start)      cmd_start ;;
+    stop)       cmd_stop ;;
+    health)     cmd_health ;;
+    logs)       cmd_logs "${1:-50}" ;;
+    version)    cmd_version ;;
+    help|--help|-h)
+        echo "Usage: fortis-mobile <command> [options]"
+        echo ""
+        echo "Commands:"
+        echo "  status [--json]   Show device and service status"
+        echo "  start             Start Backup Mode (sshd + wake lock + notification)"
+        echo "  stop              Stop Backup Mode cleanly"
+        echo "  health            Exit 0 if ready, exit 1 if not (for scripting)"
+        echo "  logs [N]          Show last N session log lines (default: 50)"
+        echo "  version           Show version"
+        ;;
+    *)
+        echo "✖ Unknown command: $COMMAND" >&2
+        echo "  Run 'fortis-mobile help' for usage." >&2
+        exit 1
+        ;;
+esac
