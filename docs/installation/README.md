@@ -178,6 +178,20 @@ echo v4l2loopback | sudo tee /etc/modules-load.d/fortis-v4l2loopback.conf
 sudo modprobe v4l2loopback
 ```
 
+### Password autofill
+
+**Laptop (browser):**
+
+```bash
+cd ~/dev/Fortis/Fortis-Ecosystem/fortis-browser && ./install.sh
+```
+
+Then in Chrome / Brave: `chrome://extensions` (or `brave://extensions`) → **Developer mode** on → **Load unpacked** → `fortis-browser/extension/dist/chrome`. In Firefox: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → `fortis-browser/extension/dist/firefox/manifest.json` (release Firefox drops unsigned add-ons on restart).
+
+Use: click the Fortis icon on a login page → **Fill**, or press **Ctrl+Shift+L**. After signing in somewhere new the icon shows **+** (or **!** for a changed password) → open it → **Save** / **Update**.
+
+**Phone:** More → **TURN_ON_AUTOFILL** → pick **Fortis** as the autofill service. In Chrome: Settings → Autofill services → **Autofill using another service**. Tap a login field → **Unlock Fortis** → fingerprint → pick the login. After signing in with a new password Android asks **Save to Fortis?**.
+
 ## 10. Fingerprint `sudo` (optional)
 
 > Keep a second terminal open with `sudo -s` until you have tested this.

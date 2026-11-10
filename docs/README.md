@@ -122,9 +122,9 @@ The code is being brought in line with this specification. Status per area (upda
 | fortis-mobile app — terminal screen | **Removed** |
 | fortis-mobile Termux CLI | Done |
 | fortis-backup | Done |
-| Autofill: shared matching rule (`fortis-core`) | Not started |
-| Autofill: phone (Android Autofill service, fill + save) | Not started |
-| Autofill: laptop (fortis-browser extension + host) | Not started |
+| Autofill: shared matching rule (`fortis-core`) | **Done** — `urlmatch` + tests; used by the agent and (via bindings) the phone |
+| Autofill: phone (Android Autofill service, fill + save) | **Done** — matching checked on the emulator; not yet tried on the real phone |
+| Autofill: laptop (fortis-browser extension + host) | **Done** — end-to-end test in a real browser (fill, wrong-site refusal, save new / update / unchanged, lock/unlock) |
 
 ## Maintainer
 

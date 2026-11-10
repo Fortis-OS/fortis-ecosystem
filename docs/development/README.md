@@ -208,7 +208,18 @@ The app in `fortis-mobile/android` already has the screens; its network and secu
 
 ---
 
-## 6. fortis-backup
+## 6. fortis-browser
+
+```bash
+cd fortis-browser
+(cd host && cargo test)      # native host unit tests
+extension/build.sh           # dist/chrome (MV3) + dist/firefox (MV2)
+tests/e2e.sh                 # real browser + extension + host + a throw-away agent (port 8124, own HOME)
+```
+
+The Chromium extension ID is pinned by the public key in `extension/chrome-public-key.txt`; the host manifest allows only that ID (and `fortis@fortis.local` in Firefox).
+
+## 6b. fortis-backup
 
 ```bash
 cd fortis-backup
