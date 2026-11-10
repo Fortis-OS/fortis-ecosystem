@@ -352,6 +352,7 @@ async fn dispatch(
             };
             Ok(json!({ "ended": n }))
         }
+        c if c.starts_with("browser_") => crate::modules::browser::handle(st, c, a),
         _ => Err(ApiError::bad_request(format!(
             "unknown command `{}`",
             req.cmd
@@ -516,6 +517,211 @@ mod tests {
                 &st,
                 Caller::Root,
                 req("pam_devices", json!({"user": "someone-else"}))
+            )
+            .await
+            .unwrap_err()
+            .code,
+            "forbidden"
+        );
+    }
+
+    #[tokio::test]
+    async fn browser_commands_enforce_matching() {
+        let t = tempfile::tempdir().unwrap();
+        let st = test_support::state(t.path(), |_| {});
+        // Locked/uninitialised → no data.
+        assert!(
+            call(
+                &st,
+                Caller::Owner,
+                req("browser_match", json!({"url":"https://github.com/"}))
+            )
+            .await
+            .is_err()
+        );
+        call(
+            &st,
+            Caller::Owner,
+            req("init", json!({"password":"a long password"})),
+        )
+        .await
+        .unwrap();
+        let gh = json!({"title":"GitHub","entry_type":{"Login":{"username":"me","password":"pw1","urls":["https://github.com"],
+            "totp":{"secret_base32":"JBSWY3DPEHPK3PXP","digits":6,"period":30,"algorithm":"Sha1"}}}});
+        let id = call(&st, Caller::Owner, req("add", json!({"entry": gh})))
+            .await
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let note = json!({"title":"github.com","entry_type":{"SecureNote":{"content":"x"}}});
+        call(&st, Caller::Owner, req("add", json!({"entry": note})))
+            .await
+            .unwrap();
+
+        let m = call(
+            &st,
+            Caller::Owner,
+            req("browser_match", json!({"url":"https://gist.github.com/x"})),
+        )
+        .await
+        .unwrap();
+        assert_eq!(m["host"], "gist.github.com");
+        assert_eq!(
+            m["entries"].as_array().unwrap().len(),
+            1,
+            "notes never match, even by title"
+        );
+        assert!(
+            m["entries"][0].get("password").is_none(),
+            "match returns no secrets"
+        );
+        let none = call(
+            &st,
+            Caller::Owner,
+            req(
+                "browser_match",
+                json!({"url":"https://github.com.evil.io/"}),
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(none["entries"].as_array().unwrap().is_empty());
+
+        let f = call(
+            &st,
+            Caller::Owner,
+            req(
+                "browser_fill",
+                json!({"id": id, "url":"https://github.com/login"}),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(f["password"], "pw1");
+        // The agent re-checks the URL: a known id on the wrong site is refused.
+        for bad in ["https://evil.io/", "http://github.com/"] {
+            let e = call(
+                &st,
+                Caller::Owner,
+                req("browser_fill", json!({"id": id, "url": bad})),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(e.code, "forbidden", "{bad}");
+        }
+        assert_eq!(
+            call(
+                &st,
+                Caller::Owner,
+                req(
+                    "browser_totp",
+                    json!({"id": id, "url":"https://github.com/"})
+                )
+            )
+            .await
+            .unwrap()["code"]
+                .as_str()
+                .unwrap()
+                .len(),
+            6
+        );
+        assert_eq!(
+            call(
+                &st,
+                Caller::Owner,
+                req("browser_totp", json!({"id": id, "url":"https://evil.io/"}))
+            )
+            .await
+            .unwrap_err()
+            .code,
+            "forbidden"
+        );
+
+        // Save: same / changed / new.
+        let chk = |u: &str, p: &str| {
+            req(
+                "browser_save_check",
+                json!({"url":"https://github.com/login","username":u,"password":p}),
+            )
+        };
+        assert_eq!(
+            call(&st, Caller::Owner, chk("me", "pw1")).await.unwrap()["status"],
+            "same"
+        );
+        let c = call(&st, Caller::Owner, chk("me", "pw2")).await.unwrap();
+        assert_eq!(c["status"], "changed");
+        assert_eq!(c["id"].as_str().unwrap(), id);
+        assert_eq!(
+            call(&st, Caller::Owner, chk("other", "pw")).await.unwrap()["status"],
+            "new"
+        );
+
+        let up = call(
+            &st,
+            Caller::Owner,
+            req(
+                "browser_save",
+                json!({"url":"https://github.com/","username":"me","password":"pw2","id": id}),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(up["action"], "updated");
+        let g = call(&st, Caller::Owner, req("get", json!({"id": id})))
+            .await
+            .unwrap();
+        assert_eq!(g["entry_type"]["Login"]["password"], "pw2");
+        assert!(
+            g["entry_type"]["Login"]["totp"].is_object(),
+            "update keeps TOTP"
+        );
+        // Updating via an unrelated site is refused.
+        assert_eq!(
+            call(
+                &st,
+                Caller::Owner,
+                req(
+                    "browser_save",
+                    json!({"url":"https://evil.io/","username":"me","password":"x","id": id})
+                )
+            )
+            .await
+            .unwrap_err()
+            .code,
+            "forbidden"
+        );
+
+        let cr = call(&st, Caller::Owner, req("browser_save", json!({"url":"https://news.ycombinator.com/login?goto=x","username":"pg","password":"s"}))).await.unwrap();
+        assert_eq!(cr["action"], "created");
+        let n = call(&st, Caller::Owner, req("get", json!({"id": cr["id"]})))
+            .await
+            .unwrap();
+        assert_eq!(n["title"], "news.ycombinator.com");
+        assert_eq!(
+            n["entry_type"]["Login"]["urls"][0],
+            "https://news.ycombinator.com"
+        );
+        assert_eq!(
+            call(
+                &st,
+                Caller::Owner,
+                req(
+                    "browser_save",
+                    json!({"url":"http://plain.com/","username":"a","password":"b"})
+                )
+            )
+            .await
+            .unwrap_err()
+            .code,
+            "forbidden"
+        );
+        // Root (pam) may not use browser commands.
+        assert_eq!(
+            call(
+                &st,
+                Caller::Root,
+                req("browser_match", json!({"url":"https://github.com/"}))
             )
             .await
             .unwrap_err()

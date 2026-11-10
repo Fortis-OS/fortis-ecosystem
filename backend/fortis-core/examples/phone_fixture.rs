@@ -80,7 +80,9 @@ fn main() {
 }
 
 fn sudo_frame() {
-    use fortis_core::sign::{canonical_approval, canonical_session, AgentKey, ApprovalRequest, Decision};
+    use fortis_core::sign::{
+        AgentKey, ApprovalRequest, Decision, canonical_approval, canonical_session,
+    };
     let key = AgentKey::generate();
     let req = ApprovalRequest::new("ganesh", "laptop", "sudo", "pts/3", 1_731_110_400);
     let msg = json!({
@@ -94,7 +96,9 @@ fn sudo_frame() {
     let frame = json!({ "msg": msg, "agent_sig": key.sign_b64(msg.as_bytes()) }).to_string();
     let other = AgentKey::generate();
     let forged = json!({ "msg": msg, "agent_sig": other.sign_b64(msg.as_bytes()) }).to_string();
-    let tampered = json!({ "msg": msg.replace("pts/3", "pts/4"), "agent_sig": key.sign_b64(msg.as_bytes()) }).to_string();
+    let tampered =
+        json!({ "msg": msg.replace("pts/3", "pts/4"), "agent_sig": key.sign_b64(msg.as_bytes()) })
+            .to_string();
     println!(
         "{}",
         json!({

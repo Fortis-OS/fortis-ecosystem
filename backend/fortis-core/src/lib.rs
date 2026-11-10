@@ -9,6 +9,7 @@ pub mod meta;
 pub mod password_gen;
 pub mod sign;
 pub mod totp;
+pub mod urlmatch;
 pub mod vault;
 
 #[cfg(feature = "db")]

@@ -27,7 +27,7 @@ use paths::Paths;
 use state::AppState;
 
 fn harden_process() {
-    // Keep key material out of core dumps and away from same-user ptrace (security §3.6).
+    // Keep key material out of core dumps and away from same-user ptrace (security §3.7).
     // SAFETY: prctl with these constant arguments has no memory-safety implications.
     unsafe {
         libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0);

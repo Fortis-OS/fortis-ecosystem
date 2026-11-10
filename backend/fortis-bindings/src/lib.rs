@@ -11,6 +11,7 @@ use fortis_core::meta::VaultMeta;
 use fortis_core::password_gen::{self, PasswordOptions};
 use fortis_core::sign::{self, ApprovalRequest, Decision};
 use fortis_core::totp;
+use fortis_core::urlmatch;
 use fortis_core::vault::{TotpConfig, VaultEntry};
 use uuid::Uuid;
 
@@ -178,4 +179,32 @@ pub fn key_fingerprint(pubkey_b64: String) -> Result<String> {
     Ok(sign::PublicKey::from_base64(&pubkey_b64)
         .map_err(invalid)?
         .fingerprint())
+}
+
+// ---- Autofill matching (security §3.6) — same rule as the agent ----------------
+
+fn autofill_target(web_url: Option<String>, package: Option<String>) -> Option<urlmatch::Target> {
+    // A reported web domain wins: a browser can't claim a site by package name.
+    match (
+        web_url.filter(|s| !s.is_empty()),
+        package.filter(|s| !s.is_empty()),
+    ) {
+        (Some(w), _) => Some(urlmatch::Target::Web(w)),
+        (None, Some(p)) => Some(urlmatch::Target::App(p)),
+        _ => None,
+    }
+}
+
+/// Does a Login with `urls` match the form? `web_url` is the page URL (or
+/// `https://<webDomain>`) when Android reports one; otherwise `package`.
+#[uniffi::export]
+pub fn login_matches(urls: Vec<String>, web_url: Option<String>, package: Option<String>) -> bool {
+    autofill_target(web_url, package).is_some_and(|t| urlmatch::matches(&urls, &t))
+}
+
+/// URL to store in a Login saved from this form, or None if it can't be saved
+/// (e.g. a plain-http page).
+#[uniffi::export]
+pub fn autofill_save_url(web_url: Option<String>, package: Option<String>) -> Option<String> {
+    autofill_target(web_url, package).and_then(|t| urlmatch::url_for_new_login(&t))
 }
