@@ -88,10 +88,10 @@ install -Dm755 target/release/fortis-agent ~/.local/bin/fortis-agent
 
 cd ../fortis-cli
 cargo build --release
-install -Dm755 target/release/fortis ~/.local/bin/fortis
+sudo install -m755 target/release/fortis /usr/local/bin/fortis
 ```
 
-Make sure `~/.local/bin` is on your `PATH`.
+Make sure `~/.local/bin` is on your `PATH`. The CLI goes in `/usr/local/bin` because `sudo fortis pam-…` and `pkexec fortis pam-uninstall` run it as root, and `sudo` doesn't search `~/.local/bin`.
 
 ## 6. Start the agent
 

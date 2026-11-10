@@ -79,6 +79,7 @@ Not part of the ecosystem: `fortis-observe` (separate web-analytics project) and
 | [Deployment](./deployment/README.md) | systemd services, PAM install, packaging |
 | [Development](./development/README.md) | Building, testing, contributing |
 | [Troubleshooting](./troubleshooting/README.md) | Common problems |
+| [Real-Device Test Plan](./testing/README.md) | Step-by-step checks on a real phone + laptop |
 
 ## Directory layout
 
