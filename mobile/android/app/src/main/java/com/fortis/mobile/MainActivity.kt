@@ -24,6 +24,10 @@ import com.fortis.mobile.ui.theme.FortisMobileTheme
 class MainActivity : FragmentActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val lockVault = Runnable { VaultSession.lock() }
+    private val notificationPermission =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) com.fortis.mobile.service.EventsService.start(this)
+        }
 
     // Lock the phone vault 60 s after the app leaves the screen (docs/security §6.3).
     override fun onStop() {
@@ -39,6 +43,12 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.fortis.mobile.service.EventsService.start(this)
+        // Sudo prompts are notifications (full-screen intent); without this
+        // permission Android drops them silently (Android 13+).
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             FortisMobileTheme {
                 FortisMobileApp()
