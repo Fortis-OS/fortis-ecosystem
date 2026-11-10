@@ -3,7 +3,10 @@ package com.fortis.mobile
 import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
+import android.os.Handler
+import android.os.Looper
+import com.fortis.mobile.vault.VaultSession
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -18,7 +21,21 @@ import com.fortis.mobile.ui.RemoteInputScreen
 import com.fortis.mobile.ui.screens.*
 import com.fortis.mobile.ui.theme.FortisMobileTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
+    private val handler = Handler(Looper.getMainLooper())
+    private val lockVault = Runnable { VaultSession.lock() }
+
+    // Lock the phone vault 60 s after the app leaves the screen (docs/security §6.3).
+    override fun onStop() {
+        super.onStop()
+        handler.postDelayed(lockVault, VaultSession.BACKGROUND_MS)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        handler.removeCallbacks(lockVault)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
