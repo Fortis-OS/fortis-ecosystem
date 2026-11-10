@@ -2,7 +2,7 @@
 # Run pam_fortis through the real libpam without root and without touching
 # the system: user + mount namespace, overlay on /etc, tmpfs on /run/user.
 #
-#   fortis-pam/tests/real_pam.sh            (from the fortis-backend workspace)
+#   fortis-pam/tests/real_pam.sh            (from the backend/ workspace)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 # --lib: building only the example would leave a stale .so in place
@@ -20,6 +20,9 @@ set -uo pipefail
 MOD=$1 HARNESS=$2 U=$3 WORK=$4
 mount -t overlay overlay -o "lowerdir=/etc,upperdir=$WORK/up,workdir=$WORK/wk" /etc
 mount -t tmpfs -o mode=755 tmpfs /run/user
+# A real install leaves a root-owned /etc/fortis we can't modify here: use our own.
+[ -d /etc/fortis ] || mkdir /etc/fortis
+mkdir -p "${WORK:-$W}/fortis-etc" && chmod 755 "${WORK:-$W}/fortis-etc" && mount --bind "${WORK:-$W}/fortis-etc" /etc/fortis
 pass=0 fail=0
 # name | module | agent | next | dash | expected code | max seconds | extra args
 check() {

@@ -39,8 +39,8 @@ You define arrays of paths in the configuration file, and FortisVault applies sm
 
 ### 1. Clone & Configure
 ```bash
-git clone git@github.com:Fortis-Ecosystem/fortis-backup.git ~/dev/fortis-backup
-cd ~/dev/fortis-backup
+git clone git@github.com:fortis-os/fortis-ecosystem.git ~/dev/Fortis/fortis-ecosystem
+cd ~/dev/Fortis/fortis-ecosystem/backup
 
 # Copy the example config
 cp backup.conf.example backup.conf
@@ -56,9 +56,9 @@ chmod 600 backup.conf
 Keep your scripts organised by symlinking the runner to your local bin or scripts folder:
 ```bash
 mkdir -p ~/Scripts
-ln -sf ~/dev/fortis-backup/fortis-backup.sh ~/Scripts/fortis-backup.sh
-ln -sf ~/dev/fortis-backup/backup.conf ~/Scripts/backup.conf
-chmod +x ~/dev/fortis-backup/fortis-backup.sh
+ln -sf ~/dev/Fortis/fortis-ecosystem/backup/fortis-backup.sh ~/Scripts/fortis-backup.sh
+ln -sf ~/dev/Fortis/fortis-ecosystem/backup/backup.conf ~/Scripts/backup.conf
+chmod +x ~/dev/Fortis/fortis-ecosystem/backup/fortis-backup.sh
 ```
 
 ### 3. Setup Systemd Automation

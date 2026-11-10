@@ -5,8 +5,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ECO="$(cd "$ROOT/.." && pwd)"
-AGENT="${AGENT:-$ECO/fortis-backend/target/debug/fortis-agent}"
-CLI="${CLI:-$ECO/fortis-cli/target/debug/fortis}"
+AGENT="${AGENT:-$ECO/backend/target/debug/fortis-agent}"
+CLI="${CLI:-$ECO/cli/target/debug/fortis}"
 BROWSER="${BROWSER:-$(command -v brave-browser || command -v google-chrome || command -v chromium)}"
 
 T=$(mktemp -d /tmp/fortis-e2e.XXXXXX)

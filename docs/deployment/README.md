@@ -8,7 +8,7 @@ Production setup for a single-user Linux laptop plus one Android phone. Step-by-
 
 The agent runs as **your user**, never as root. One instance per user.
 
-`fortis-backend/fortis-agent/systemd/fortis-agent.service`:
+`backend/fortis-agent/systemd/fortis-agent.service`:
 
 ```ini
 [Unit]
@@ -69,7 +69,7 @@ Never hand-edit PAM files for Fortis. The steps below follow the lockout safegua
 ### 1. Install the module file
 
 ```bash
-cd fortis-backend
+cd backend
 cargo build --release -p fortis-pam
 # Debian/Ubuntu (multiarch directory — /usr/lib/security is NOT searched):
 sudo install -o root -g root -m 0644 target/release/libfortis_pam.so /usr/lib/x86_64-linux-gnu/security/pam_fortis.so
@@ -139,7 +139,7 @@ sudo fortis pam-enroll          # removes it from the root-owned trust file
 ## 3. fortis-desktop
 
 ```bash
-cd fortis-desktop
+cd desktop
 npm ci
 npm run tauri build
 # .deb:      src-tauri/target/release/bundle/deb/
@@ -155,14 +155,14 @@ Tauri security settings that must stay in place: a strict CSP (`default-src 'sel
 ## 4. fortis-mobile
 
 ```bash
-cd fortis-mobile/android
+cd mobile/android
 ./gradlew assembleRelease        # needs a signing config in ~/.gradle/gradle.properties
 adb install app/build/outputs/apk/release/app-release.apk
 ```
 
-The Termux backup CLI is installed separately on the phone with `bash fortis-mobile/cli/install.sh` inside Termux (see the [Installation Guide](../installation/README.md#off-site-copy-to-the-phone-optional)).
+The Termux backup CLI is installed separately on the phone with `bash mobile/cli/install.sh` inside Termux (see the [Installation Guide](../installation/README.md#off-site-copy-to-the-phone-optional)).
 
-The native library comes from `fortis-backend/fortis-bindings` — see [Development §5](../development/README.md#5-fortis-mobile-and-fortis-bindings).
+The native library comes from `backend/fortis-bindings` — see [Development §5](../development/README.md#5-fortis-mobile-and-fortis-bindings).
 
 Phone settings for reliable `sudo` prompts:
 
@@ -177,7 +177,7 @@ Phone settings for reliable `sudo` prompts:
 User-level systemd timer, daily at 23:45, catches up after downtime (`Persistent=true`).
 
 ```bash
-cd fortis-backup
+cd backup
 cp backup.conf.example backup.conf && chmod 600 backup.conf
 install -Dm644 systemd/fortis-backup.service ~/.config/systemd/user/
 install -Dm644 systemd/fortis-backup.timer   ~/.config/systemd/user/
@@ -185,7 +185,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now fortis-backup.timer
 ```
 
-- `ExecStart` in the service is `%h/dev/Fortis/Fortis-Ecosystem/fortis-backup/fortis-backup.sh`; change it if you cloned elsewhere. Set the same path as `backup.script` in `agent.toml`.
+- `ExecStart` in the service is `%h/dev/Fortis/fortis-ecosystem/backup/fortis-backup.sh`; change it if you cloned elsewhere. Set the same path as `backup.script` in `agent.toml`.
 - `ExecStartPre=/usr/bin/mountpoint -q /mnt/FortisVault` skips the run if the drive isn't mounted.
 - `backup.conf` is read from the script's own directory and must be owned by you and not group/world-writable.
 - Add `~/.local/share/fortis` to `SECRETS` so the (encrypted) vault is backed up.

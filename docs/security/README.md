@@ -450,7 +450,7 @@ The phone **MUST NOT** store any shared secret for talking to the agent (no bear
 | `$XDG_RUNTIME_DIR/fortis/agent.sock` | user `0600` | IPC socket |
 | `/etc/fortis/pam/<user>.json` | root `0644` | sudo approval trust anchor |
 | `/mnt/FortisVault/` | user `0700` | Backup root (enforced by fortis-backup) |
-| `fortis-backup/backup.conf` | user `0600` | Backup config (script refuses group/world-writable or foreign-owned) |
+| `backup/backup.conf` | user `0600` | Backup config (script refuses group/world-writable or foreign-owned) |
 
 The agent checks modes at start-up and tightens anything too permissive, logging a warning.
 

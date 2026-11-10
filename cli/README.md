@@ -1,10 +1,10 @@
 # fortis-cli
 
-`fortis` — terminal client for [fortis-agent](https://github.com/Fortis-Ecosystem/fortis-backend). It talks to the agent only over its Unix socket (`$XDG_RUNTIME_DIR/fortis/agent.sock`). Spec: [docs/development §3](https://github.com/Fortis-Ecosystem/docs/blob/main/development/README.md#3-fortis-cli) and [API §6](https://github.com/Fortis-Ecosystem/docs/blob/main/api/README.md#6-ipc-protocol).
+`fortis` — terminal client for [fortis-agent](../backend). It talks to the agent only over its Unix socket (`$XDG_RUNTIME_DIR/fortis/agent.sock`). Spec: [docs/development §3](../docs/development/README.md#3-fortis-cli) and [API §6](../docs/api/README.md#6-ipc-protocol).
 
 ## Build
 
-The crate uses `fortis-core` from `../fortis-backend/fortis-core`, so clone both repos side by side.
+The crate uses `fortis-core` from `../backend/fortis-core`, so clone both repos side by side.
 
 ```bash
 cargo build --release

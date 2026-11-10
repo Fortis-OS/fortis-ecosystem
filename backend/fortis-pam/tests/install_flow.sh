@@ -21,9 +21,14 @@ mount -t overlay overlay -o "lowerdir=/etc,upperdir=$W/eu,workdir=$W/ew" /etc
 # can't write into directories owned by the real, unmapped root).
 mkdir -p "$W/pamd" "$W/mods"; chmod 755 "$W/pamd" "$W/mods"
 cp -r /etc/pam.d/. "$W/pamd/"; cp -r "$MODDIR/." "$W/mods/"
+# Start from a system without Fortis, even if it's installed for real here.
+sed -i '/pam_fortis\.so/d' "$W/pamd/sudo"; rm -f "$W/pamd/fortis-test" "$W/mods/pam_fortis.so"
 mount --bind "$W/pamd" /etc/pam.d
 mount --bind "$W/mods" "$MODDIR"
 mount -t tmpfs -o mode=755 tmpfs /run/user
+# A real install leaves a root-owned /etc/fortis we can't modify here: use our own.
+[ -d /etc/fortis ] || mkdir /etc/fortis
+mkdir -p "${WORK:-$W}/fortis-etc" && chmod 755 "${WORK:-$W}/fortis-etc" && mount --bind "${WORK:-$W}/fortis-etc" /etc/fortis
 export SUDO_USER=$U
 ORIG=$(cat /etc/pam.d/sudo)
 step(){ echo; echo "### $*"; }

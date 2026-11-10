@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Build fortis-bindings for Android and regenerate the Kotlin bindings
 # (docs/development §5). Needs: cargo-ndk, Android NDK, rust targets
-# aarch64-linux-android + x86_64-linux-android, and fortis-backend cloned
+# aarch64-linux-android + x86_64-linux-android, and the backend/ workspace
 # next to fortis-mobile.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-BACKEND="${FORTIS_BACKEND:-$HERE/../fortis-backend}"
+BACKEND="${FORTIS_BACKEND:-$HERE/../backend}"
 SDK="${ANDROID_HOME:-$(sed -n 's/^sdk.dir=//p' "$HERE/android/local.properties" 2>/dev/null)}"
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$(ls -d "$SDK"/ndk/* | sort -V | head -1)}"
 APP="$HERE/android/app/src/main"

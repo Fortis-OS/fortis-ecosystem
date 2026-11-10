@@ -2,7 +2,7 @@
 
 The Fortis vault on your desktop: create/unlock the vault, browse and search entries, view and copy secrets, live 2FA codes, add/edit/delete entries, a password generator, and changing the master password.
 
-It is a client of [fortis-agent](https://github.com/Fortis-Ecosystem/fortis-backend) over the agent's **loopback** API. Spec: [docs/development §4](https://github.com/Fortis-Ecosystem/docs/blob/main/development/README.md#4-fortis-desktop), [security §5.2](https://github.com/Fortis-Ecosystem/docs/blob/main/security/README.md).
+It is a client of [fortis-agent](../backend) over the agent's **loopback** API. Spec: [docs/development §4](../docs/development/README.md#4-fortis-desktop), [security §5.2](../docs/security/README.md).
 
 ## Security design
 

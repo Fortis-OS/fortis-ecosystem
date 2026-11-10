@@ -73,20 +73,17 @@ Install Tailscale on the phone from the Play Store, sign in to the same tailnet,
 ## 4. Clone
 
 ```bash
-mkdir -p ~/dev/Fortis/Fortis-Ecosystem && cd ~/dev/Fortis/Fortis-Ecosystem
-for r in fortis-backend fortis-cli fortis-desktop fortis-mobile fortis-backup docs; do
-  git clone "git@github.com:Fortis-Ecosystem/$r.git"
-done
+git clone git@github.com:fortis-os/fortis-ecosystem.git ~/dev/Fortis/fortis-ecosystem
 ```
 
 ## 5. Build and install the laptop side
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backend
+cd ~/dev/Fortis/fortis-ecosystem/backend
 cargo build --release -p fortis-agent -p fortis-pam
 install -Dm755 target/release/fortis-agent ~/.local/bin/fortis-agent
 
-cd ../fortis-cli
+cd ../cli
 cargo build --release
 sudo install -m755 target/release/fortis /usr/local/bin/fortis
 ```
@@ -96,7 +93,7 @@ Make sure `~/.local/bin` is on your `PATH`. The CLI goes in `/usr/local/bin` bec
 ## 6. Start the agent
 
 ```bash
-install -Dm644 ~/dev/Fortis/Fortis-Ecosystem/fortis-backend/fortis-agent/systemd/fortis-agent.service \
+install -Dm644 ~/dev/Fortis/fortis-ecosystem/backend/fortis-agent/systemd/fortis-agent.service \
   ~/.config/systemd/user/fortis-agent.service
 systemctl --user daemon-reload
 systemctl --user enable --now fortis-agent
@@ -124,7 +121,7 @@ fortis lock
 ## 8. Desktop app
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-desktop
+cd ~/dev/Fortis/fortis-ecosystem/desktop
 npm install
 npm run tauri build
 sudo dpkg -i src-tauri/target/release/bundle/deb/fortis-desktop_*.deb   # or use the AppImage
@@ -134,7 +131,7 @@ The app finds the agent token in `~/.config/fortis/agent.token` automatically.
 
 ## 9. Phone app
 
-1. Open `fortis-mobile/android/` in Android Studio, build, and install on the phone (or `./gradlew installRelease` from that folder).
+1. Open `mobile/android/` in Android Studio, build, and install on the phone (or `./gradlew installRelease` from that folder).
 2. On the laptop: `fortis pair` — it prints a QR code and a 10-character code (valid 2 minutes).
 3. In the app: **Devices → Pair laptop** → scan the QR (or type the code and the Tailscale IP). Tick **Use as vault laptop** for the laptop that holds your passwords.
 4. Check the key fingerprints shown on both screens match, and confirm on the laptop.
@@ -183,10 +180,10 @@ sudo modprobe v4l2loopback
 **Laptop (browser):**
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-browser && ./install.sh
+cd ~/dev/Fortis/fortis-ecosystem/browser && ./install.sh
 ```
 
-Then in Chrome / Brave: `chrome://extensions` (or `brave://extensions`) → **Developer mode** on → **Load unpacked** → `fortis-browser/extension/dist/chrome`. In Firefox: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → `fortis-browser/extension/dist/firefox/manifest.json` (release Firefox drops unsigned add-ons on restart).
+Then in Chrome / Brave: `chrome://extensions` (or `brave://extensions`) → **Developer mode** on → **Load unpacked** → `browser/extension/dist/chrome`. In Firefox: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → `browser/extension/dist/firefox/manifest.json` (release Firefox drops unsigned add-ons on restart).
 
 Use: click the Fortis icon on a login page → **Fill**, or press **Ctrl+Shift+L**. After signing in somewhere new the icon shows **+** (or **!** for a changed password) → open it → **Save** / **Update**.
 
@@ -197,7 +194,7 @@ Use: click the Fortis icon on a login page → **Fill**, or press **Ctrl+Shift+L
 > Keep a second terminal open with `sudo -s` until you have tested this.
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backend
+cd ~/dev/Fortis/fortis-ecosystem/backend
 cargo build --release -p fortis-pam
 sudo install -o root -g root -m 0644 target/release/libfortis_pam.so /usr/lib/x86_64-linux-gnu/security/pam_fortis.so
 # Fedora: /usr/lib64/security/pam_fortis.so
@@ -224,7 +221,7 @@ To remove it: `sudo fortis pam-uninstall` (or `pkexec fortis pam-uninstall` if s
 ## 11. Backups
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backup
+cd ~/dev/Fortis/fortis-ecosystem/backup
 cp backup.conf.example backup.conf && chmod 600 backup.conf
 $EDITOR backup.conf          # set BACKUP_ROOT, PROJECTS, SECRETS (add ~/.local/share/fortis), MEMORIES
 ./fortis-backup.sh           # first run
@@ -240,8 +237,8 @@ On the phone, in Termux:
 
 ```bash
 pkg install git openssh termux-api jq
-git clone https://github.com/Fortis-Ecosystem/fortis-mobile.git
-bash fortis-mobile/cli/install.sh            # installs ~/.local/bin/fortis-mobile + Termux:Boot hook
+git clone --depth 1 https://github.com/fortis-os/fortis-ecosystem.git
+bash fortis-ecosystem/mobile/cli/install.sh            # installs ~/.local/bin/fortis-mobile + Termux:Boot hook
 ```
 
 On the laptop:

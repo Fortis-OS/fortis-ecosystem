@@ -114,7 +114,7 @@ impl Default for WebcamConfig {
 impl Default for BackupConfig {
     fn default() -> Self {
         Self {
-            script: "~/dev/Fortis/Fortis-Ecosystem/fortis-backup/fortis-backup.sh".into(),
+            script: "~/dev/Fortis/fortis-ecosystem/backup/fortis-backup.sh".into(),
             log: "/mnt/FortisVault/Logs/mirror/mirror.log".into(),
         }
     }

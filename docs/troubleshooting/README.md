@@ -180,8 +180,8 @@ systemctl --user status fortis-agent
 ### "Security Error: backup.conf"
 
 ```bash
-chown "$USER" fortis-backup/backup.conf
-chmod 600 fortis-backup/backup.conf
+chown "$USER" backup/backup.conf
+chmod 600 backup/backup.conf
 ```
 
 ### "Destination unavailable"

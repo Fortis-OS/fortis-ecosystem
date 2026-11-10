@@ -2,9 +2,9 @@
 
 Crypto, data models and the SQLCipher vault database for Fortis. No networking.
 
-The behaviour is specified in the [docs](https://github.com/Fortis-Ecosystem/docs) — mainly the
-[Security Model](https://github.com/Fortis-Ecosystem/docs/blob/main/security/README.md) §2–§4 and
-[Architecture](https://github.com/Fortis-Ecosystem/docs/blob/main/architecture/README.md) §4.
+The behaviour is specified in the [docs](../../docs) — mainly the
+[Security Model](../../docs/security/README.md) §2–§4 and
+[Architecture](../../docs/architecture/README.md) §4.
 
 ## Modules
 

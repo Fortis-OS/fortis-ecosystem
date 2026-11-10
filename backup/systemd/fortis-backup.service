@@ -10,7 +10,7 @@ Type=oneshot
 # Fix #12: Use mountpoint -q instead of test -d — mountpoint verifies the drive is
 # actually mounted, whereas test -d would pass even on an empty unmounted directory.
 ExecStartPre=/usr/bin/mountpoint -q /mnt/FortisVault
-ExecStart=%h/dev/Fortis/Fortis-Ecosystem/fortis-backup/fortis-backup.sh
+ExecStart=%h/dev/Fortis/fortis-ecosystem/backup/fortis-backup.sh
 # Fix #13: Expose the user session's runtime dir so notify-send can reach the
 # D-Bus session bus. Without this, desktop notifications silently fail under systemd.
 Environment=XDG_RUNTIME_DIR=/run/user/%U

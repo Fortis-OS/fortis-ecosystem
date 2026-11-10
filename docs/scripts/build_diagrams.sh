@@ -6,7 +6,7 @@ set -e
 DOCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARCH_DIR="$DOCS_DIR/architecture"
 DIAGRAMS_DIR="$ARCH_DIR/diagrams"
-BACKEND_DIR="$DOCS_DIR/../fortis-backend"
+BACKEND_DIR="$DOCS_DIR/../backend"
 
 mkdir -p "$DIAGRAMS_DIR"
 

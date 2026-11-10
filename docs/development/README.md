@@ -13,34 +13,34 @@
 ## 1. Layout
 
 ```text
-~/dev/Fortis/Fortis-Ecosystem/
-├── fortis-backend/        # Cargo workspace
+~/dev/Fortis/fortis-ecosystem/
+├── backend/        # Cargo workspace
 │   ├── fortis-core/       # lib (feature "db" = SQLCipher)
 │   ├── fortis-agent/      # bin
 │   ├── fortis-pam/        # cdylib → pam_fortis.so
 │   └── fortis-bindings/   # cdylib → libfortis_bindings.so (UniFFI)
-├── fortis-cli/            # bin "fortis" (standalone crate)
-├── fortis-desktop/        # Tauri v2
-├── fortis-mobile/
+├── cli/            # bin "fortis" (standalone crate)
+├── desktop/        # Tauri v2
+├── mobile/
 │   ├── android/           # Android app (Gradle)
 │   └── cli/               # Termux backup CLI (Bash)
-├── fortis-browser/
+├── browser/
 │   ├── extension/         # WebExtension (Firefox + Chromium, Manifest V3)
 │   └── host/              # Rust bin "fortis-browser-host" (native messaging)
-├── fortis-backup/         # Bash
+├── backup/         # Bash
 └── docs/
 ```
 
 ```toml
-# fortis-backend/Cargo.toml
+# backend/Cargo.toml
 [workspace]
 members = ["fortis-core", "fortis-agent", "fortis-pam", "fortis-bindings"]
 resolver = "2"
 ```
 
-Cross-repo dependencies:
+Dependencies between components (all by relative path inside the monorepo):
 
-- `fortis-cli` may depend on `fortis-core` with `default-features = false` (path `../fortis-backend/fortis-core`) for the password generator; it talks to the agent only over IPC.
+- `fortis-cli` may depend on `fortis-core` with `default-features = false` (path `../backend/fortis-core`) for the password generator; it talks to the agent only over IPC.
 - `fortis-desktop` does **not** depend on `fortis-core`. It is an HTTP client of the agent.
 - `fortis-mobile` uses the compiled `fortis-bindings` library and the generated Kotlin file.
 
@@ -49,7 +49,7 @@ Cross-repo dependencies:
 ## 2. fortis-backend
 
 ```bash
-cd fortis-backend
+cd backend
 cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
@@ -99,7 +99,7 @@ On a real machine, `sudo fortis pam-test` exercises the installed module through
 ## 3. fortis-cli
 
 ```bash
-cd fortis-cli
+cd cli
 cargo build
 ./target/debug/fortis status
 ```
@@ -131,7 +131,7 @@ Passwords are read with no echo. `--copy` puts the value on the clipboard and cl
 ## 4. fortis-desktop
 
 ```bash
-cd fortis-desktop
+cd desktop
 npm install
 npm run tauri dev
 ```
@@ -150,11 +150,11 @@ npm run tauri dev
 ```bash
 cargo install cargo-ndk
 rustup target add aarch64-linux-android x86_64-linux-android
-cd fortis-backend/fortis-bindings
-cargo ndk -t arm64-v8a -t x86_64 -o ../../fortis-mobile/android/app/src/main/jniLibs build --release
+cd backend/fortis-bindings
+cargo ndk -t arm64-v8a -t x86_64 -o ../../mobile/android/app/src/main/jniLibs build --release
 cargo run --bin uniffi-bindgen generate --library \
   ../target/aarch64-linux-android/release/libfortis_bindings.so \
-  --language kotlin --out-dir ../../fortis-mobile/android/app/src/main/java
+  --language kotlin --out-dir ../../mobile/android/app/src/main/java
 ```
 
 ### Bindings surface
@@ -190,7 +190,7 @@ android/app/src/main/java/com/fortis/mobile/
 
 ### Migrating the existing app
 
-The app in `fortis-mobile/android` already has the screens; its network and security layers change:
+The app in `mobile/android` already has the screens; its network and security layers change:
 
 | Today | Target |
 |---|---|
@@ -211,7 +211,7 @@ The app in `fortis-mobile/android` already has the screens; its network and secu
 ## 6. fortis-browser
 
 ```bash
-cd fortis-browser
+cd browser
 (cd host && cargo test)      # native host unit tests
 extension/build.sh           # dist/chrome (MV3) + dist/firefox (MV2)
 tests/e2e.sh                 # real browser + extension + host + a throw-away agent (port 8124, own HOME)
@@ -222,7 +222,7 @@ The Chromium extension ID is pinned by the public key in `extension/chrome-publi
 ## 6b. fortis-backup
 
 ```bash
-cd fortis-backup
+cd backup
 shellcheck fortis-backup.sh
 ```
 

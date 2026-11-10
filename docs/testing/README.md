@@ -18,7 +18,7 @@ Work through it top to bottom. Each test says what to do and what you should see
 
 ## 1. Retire the v1 agent
 
-The v1 agent runs as the systemd user service `fortis-agent`. Its unit runs `fortis-backend/target/release/fortis-agent` — **the same path a v2 release build writes to** — and it reads `~/.local/share/fortis/vault.db`, the same folder v2 uses. So stop it and move its data aside **before** building v2:
+The v1 agent runs as the systemd user service `fortis-agent`. Its unit runs `backend/target/release/fortis-agent` — **the same path a v2 release build writes to** — and it reads `~/.local/share/fortis/vault.db`, the same folder v2 uses. So stop it and move its data aside **before** building v2:
 
 ```bash
 systemctl --user disable --now fortis-agent
@@ -41,21 +41,21 @@ Rollback at any time: [§7](#7-roll-back).
 ## 2. Install the laptop side (v2)
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-backend && git switch v2 && cargo build --release -p fortis-agent -p fortis-pam
+cd ~/dev/Fortis/fortis-ecosystem/backend && cargo build --release -p fortis-agent -p fortis-pam
 ```
 
 ```bash
-install -Dm755 ~/dev/Fortis/Fortis-Ecosystem/fortis-backend/target/release/fortis-agent ~/.local/bin/fortis-agent
+install -Dm755 ~/dev/Fortis/fortis-ecosystem/backend/target/release/fortis-agent ~/.local/bin/fortis-agent
 ```
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-cli && git switch v2 && cargo build --release && sudo install -m755 target/release/fortis /usr/local/bin/fortis
+cd ~/dev/Fortis/fortis-ecosystem/cli && cargo build --release && sudo install -m755 target/release/fortis /usr/local/bin/fortis
 ```
 
 (The CLI goes in `/usr/local/bin` so `sudo fortis …` and `pkexec fortis …` find it; `sudo` doesn't search `~/.local/bin`.)
 
 ```bash
-install -Dm644 ~/dev/Fortis/Fortis-Ecosystem/fortis-backend/fortis-agent/systemd/fortis-agent.service ~/.config/systemd/user/fortis-agent.service && systemctl --user daemon-reload && systemctl --user enable --now fortis-agent
+install -Dm644 ~/dev/Fortis/fortis-ecosystem/backend/fortis-agent/systemd/fortis-agent.service ~/.config/systemd/user/fortis-agent.service && systemctl --user daemon-reload && systemctl --user enable --now fortis-agent
 ```
 
 ### T1 — Agent listens only where it should
@@ -88,7 +88,7 @@ Add one **Login** with a username, password and a TOTP secret (e.g. `JBSWY3DPEHP
 fortis list && fortis status
 ```
 
-Expect the entry listed and `state: unlocked`. Open the desktop app too (`fortis-desktop`, or `npm run tauri dev` in `fortis-desktop/`) and check the entry shows there.
+Expect the entry listed and `state: unlocked`. Open the desktop app too (`fortis-desktop`, or `npm run tauri dev` in `desktop/`) and check the entry shows there.
 
 ---
 
@@ -97,11 +97,11 @@ Expect the entry listed and `state: unlocked`. Open the desktop app too (`fortis
 The v2 app is a new package (`com.fortis.mobile`), so it installs next to the old one. Turn on **Developer options → USB debugging** on the phone, plug it in, then:
 
 ```bash
-cd ~/dev/Fortis/Fortis-Ecosystem/fortis-mobile && git switch v2 && ./scripts/build-rust.sh && cd android && ./gradlew assembleDebug
+cd ~/dev/Fortis/fortis-ecosystem/mobile && ./scripts/build-rust.sh && cd android && ./gradlew assembleDebug
 ```
 
 ```bash
-adb install -r ~/dev/Fortis/Fortis-Ecosystem/fortis-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r ~/dev/Fortis/fortis-ecosystem/mobile/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Phone settings (Infinix/XOS kills background apps aggressively — these matter):
@@ -193,7 +193,7 @@ sudo -s
 Then, in your normal terminal:
 
 ```bash
-sudo install -o root -g root -m 0644 ~/dev/Fortis/Fortis-Ecosystem/fortis-backend/target/release/libfortis_pam.so /usr/lib/x86_64-linux-gnu/security/pam_fortis.so
+sudo install -o root -g root -m 0644 ~/dev/Fortis/fortis-ecosystem/backend/target/release/libfortis_pam.so /usr/lib/x86_64-linux-gnu/security/pam_fortis.so
 ```
 
 ```bash

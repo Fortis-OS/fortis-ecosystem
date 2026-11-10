@@ -1,0 +1,42 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "backend\ncli\nbrowser/host" }
+      - run: sudo apt-get update && sudo apt-get install -y libpam0g-dev
+      - name: backend
+        working-directory: backend
+        run: cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
+      - name: cli
+        working-directory: cli
+        run: cargo test
+      - name: browser host
+        working-directory: browser/host
+        run: cargo test
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: browser/extension/build.sh
+      - run: for f in browser/extension/src/*.js; do node --check "$f"; done
+
+  mobile-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - working-directory: mobile/android
+        run: ./gradlew --no-daemon testDebugUnitTest

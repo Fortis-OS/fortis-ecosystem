@@ -1,55 +1,18 @@
-# fortis-backend
+# backend — Rust workspace
 
-> The Rust workspace powering the Fortis Ecosystem. Contains the agent daemon, core cryptographic library, gRPC sync protocol, PAM biometric module, and UniFFI mobile bindings.
+The laptop side of Fortis and the crypto shared with the phone. Spec: [docs](../docs/README.md) — mainly [Security](../docs/security/README.md), [Architecture §2–§3](../docs/architecture/README.md) and the [API](../docs/api/README.md).
 
-[![Language](https://img.shields.io/badge/Language-Rust-orange?style=flat-square)](https://www.rust-lang.org)
-[![Workspace](https://img.shields.io/badge/Cargo-Workspace-blue?style=flat-square)](https://doc.rust-lang.org/cargo/reference/workspaces.html)
-
----
-
-## Workspace Members
-
-| Crate | Type | Description |
+| Crate | Type | What it is |
 |---|---|---|
-| [fortis-core](./fortis-core/) | Library | Cryptographic primitives, vault data models, SQLCipher database, TOTP, Ed25519 auth |
-| [fortis-sync](./fortis-sync/) | Library | gRPC (Tonic/Protobuf) service definitions and P2P sync logic |
-| [fortis-agent](./fortis-agent/) | Binary | Unified daemon: REST (Axum), IPC (Unix Socket), gRPC server |
-| [fortis-bindings](./fortis-bindings/) | Library (cdylib) | UniFFI (Mozilla) bindings for Android/iOS — exports TOTP and password generation |
-| [fortis-pam](./fortis-pam/) | Library (cdylib) | Linux PAM module for biometric sudo via IPC to the agent |
-
-## Build
+| [fortis-core](./fortis-core/) | lib | Vault crypto (Argon2id, HKDF, XChaCha20-Poly1305), SQLCipher vault (`db` feature), sync rules, P-256 signatures and canonical bytes, TOTP, password generator, autofill URL matching. No networking. |
+| [fortis-agent](./fortis-agent/) | bin | The laptop daemon: loopback REST for the desktop app, signed Tailscale REST + events WebSocket for the phone, IPC socket for the CLI / PAM / browser host. Owns the vault. |
+| [fortis-pam](./fortis-pam/) | cdylib | `pam_fortis.so` — fingerprint-approved `sudo`, verified against a root-owned key file, with lockout safeguards. |
+| [fortis-bindings](./fortis-bindings/) | cdylib | UniFFI bindings used by the Android app (key derivation, entry crypto, TOTP, canonical bytes, signature checks, autofill matching). |
 
 ```bash
-# All crates
-cargo build --release
-
-# Individual crate
-cargo build -p fortis-agent --release
-
-# Run tests
-cargo test
-
-# Run the agent in development
-FORTIS_AGENT_KEY=dev_key RUST_LOG=debug cargo run -p fortis-agent
+cargo build --release -p fortis-agent -p fortis-pam
+cargo test --workspace
+cargo clippy --workspace --all-targets
 ```
 
-## Workspace Layout
-
-```
-fortis-backend/
-├── Cargo.toml              # Workspace manifest
-├── Cargo.lock
-├── fortis-core/            # Core crypto library (no I/O)
-├── fortis-sync/            # gRPC protocol + sync engine
-├── fortis-agent/           # Daemon binary
-├── fortis-bindings/        # UniFFI mobile bindings
-└── fortis-pam/             # PAM shared library
-```
-
-See each crate's individual README for detailed documentation.
-
----
-
-## Maintainer
-
-**Ganesh Angadi** — [@ganeshak11](https://github.com/ganeshak11)
+Run a throw-away agent for development: [docs/development §2](../docs/development/README.md). The PAM module has its own sandboxed tests: [fortis-pam/README.md](./fortis-pam/README.md).

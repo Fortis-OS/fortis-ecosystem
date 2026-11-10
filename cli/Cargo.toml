@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-fortis-core = { path = "../fortis-backend/fortis-core", default-features = false }
+fortis-core = { path = "../backend/fortis-core", default-features = false }
 libc = "0.2"
 qrcode = { version = "0.14", default-features = false }
 rpassword = "7"

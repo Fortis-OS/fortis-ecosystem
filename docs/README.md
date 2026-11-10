@@ -47,17 +47,19 @@ graph LR
 
 Full detail: [Architecture](./architecture/README.md).
 
-## Repositories
+## Components
 
-| Repository | Language | Contents |
+Everything lives in one repository, [fortis-os/fortis-ecosystem](https://github.com/fortis-os/fortis-ecosystem):
+
+| Folder | Language | Contents |
 |---|---|---|
-| [fortis-backend](https://github.com/Fortis-Ecosystem/fortis-backend) | Rust | Workspace: `fortis-core`, `fortis-agent`, `fortis-pam`, `fortis-bindings` |
-| [fortis-cli](https://github.com/Fortis-Ecosystem/fortis-cli) | Rust | Terminal client (IPC) |
-| [fortis-desktop](https://github.com/Fortis-Ecosystem/fortis-desktop) | Rust + TypeScript | Tauri v2 vault app |
-| [fortis-mobile](https://github.com/Fortis-Ecosystem/fortis-mobile) | Kotlin + Bash | Android app (`android/`) and Termux backup CLI (`cli/`) |
-| fortis-browser | JS + Rust | Browser extension + native-messaging host |
-| [fortis-backup](https://github.com/Fortis-Ecosystem/fortis-backup) | Bash | Backup engine + systemd timer |
-| [docs](https://github.com/Fortis-Ecosystem/docs) | Markdown | This specification |
+| [backend/](../backend) | Rust | Workspace: `fortis-core`, `fortis-agent`, `fortis-pam`, `fortis-bindings` |
+| [cli/](../cli) | Rust | Terminal client (IPC) |
+| [desktop/](../desktop) | Rust + TypeScript | Tauri v2 vault app |
+| [mobile/](../mobile) | Kotlin + Bash | Android app (`android/`) and Termux backup CLI (`cli/`) |
+| [browser/](../browser) | JS + Rust | Browser extension + native-messaging host |
+| [backup/](../backup) | Bash | Backup engine + systemd timer |
+| [docs/](.) | Markdown | This specification |
 
 Not part of the ecosystem: `fortis-observe` (separate web-analytics project) and `fortis-lock` (dropped).
 
@@ -85,17 +87,19 @@ Not part of the ecosystem: `fortis-observe` (separate web-analytics project) and
 
 ## Directory layout
 
-Clone repositories side by side:
+```bash
+git clone git@github.com:fortis-os/fortis-ecosystem.git ~/dev/Fortis/fortis-ecosystem
+```
 
 ```text
-~/dev/Fortis/Fortis-Ecosystem/
-├── fortis-backend/
-├── fortis-cli/
-├── fortis-desktop/
-├── fortis-mobile/
-├── fortis-backup/
-├── docs/
-└── archives/        # old prototypes, not built
+~/dev/Fortis/fortis-ecosystem/
+├── backend/
+├── cli/
+├── desktop/
+├── mobile/
+├── browser/
+├── backup/
+└── docs/
 ```
 
 ## Implementation status

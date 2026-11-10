@@ -1,6 +1,6 @@
 # fortis-pam (`pam_fortis.so`)
 
-Fingerprint-approved `sudo`: the module sends a fresh challenge to the paired phone through fortis-agent and accepts only a valid P-256 signature from a device listed in the **root-owned** `/etc/fortis/pam/<user>.json`. Spec: [security §4 and §4.7](https://github.com/Fortis-Ecosystem/docs/blob/main/security/README.md).
+Fingerprint-approved `sudo`: the module sends a fresh challenge to the paired phone through fortis-agent and accepts only a valid P-256 signature from a device listed in the **root-owned** `/etc/fortis/pam/<user>.json`. Spec: [security §4 and §4.7](../../docs/security/README.md).
 
 It returns only `PAM_SUCCESS` or `PAM_IGNORE`. On deny, timeout, a missing agent, a bad signature, an unsafe trust file — anything — PAM moves on to your password.
 
@@ -35,7 +35,7 @@ Undo: `sudo fortis pam-uninstall`, or `pkexec fortis pam-uninstall` if sudo is e
 ```bash
 cargo test -p fortis-pam                                  # unit tests
 fortis-pam/tests/real_pam.sh                              # the .so through real libpam (no root; user namespace)
-fortis-pam/tests/install_flow.sh ../fortis-cli/target/release/fortis   # pam-install/test/uninstall + real sudo stack
+fortis-pam/tests/install_flow.sh ../cli/target/release/fortis   # pam-install/test/uninstall + real sudo stack
 ```
 
 Both scripts run in a user + mount namespace with overlays, so nothing on the host changes.

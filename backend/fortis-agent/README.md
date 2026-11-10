@@ -1,7 +1,7 @@
 # fortis-agent
 
 The laptop daemon. It owns the encrypted vault, relays fingerprint `sudo` approvals, and serves the paired phone.
-Its behaviour is specified in the [docs](https://github.com/Fortis-Ecosystem/docs): [Architecture §3](https://github.com/Fortis-Ecosystem/docs/blob/main/architecture/README.md), [API](https://github.com/Fortis-Ecosystem/docs/blob/main/api/README.md), [Security](https://github.com/Fortis-Ecosystem/docs/blob/main/security/README.md).
+Its behaviour is specified in the [docs](../../docs): [Architecture §3](../../docs/architecture/README.md), [API](../../docs/api/README.md), [Security](../../docs/security/README.md).
 
 ## Listeners
 

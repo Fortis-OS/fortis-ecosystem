@@ -70,10 +70,10 @@ Out of scope: `fortis-observe` (separate analytics project), `fortis-lock` (drop
 
 ---
 
-## 2. Rust Workspace (`fortis-backend`)
+## 2. Rust Workspace (`backend/`)
 
 ```text
-fortis-backend/
+backend/
 ├── Cargo.toml              # workspace: fortis-core, fortis-agent, fortis-pam, fortis-bindings
 ├── fortis-core/
 │   └── src/
@@ -163,7 +163,7 @@ enabled = false        # phone camera → v4l2loopback
 device = "/dev/video10"
 
 [backup]
-script = "~/dev/Fortis/Fortis-Ecosystem/fortis-backup/fortis-backup.sh"
+script = "~/dev/Fortis/fortis-ecosystem/backup/fortis-backup.sh"
 log    = "/mnt/FortisVault/Logs/mirror/mirror.log"
 ```
 
@@ -419,7 +419,7 @@ On the phone, Android's Autofill framework calls `FortisAutofillService`; it off
 
 The vault file is included by listing `~/.local/share/fortis` under `SECRETS` in `backup.conf`. It stays encrypted in the backup. The agent can trigger a run (`run_backup` action) and read the log tail.
 
-The phone side of backup is the Termux CLI in `fortis-mobile/cli/`, separate from the Android app:
+The phone side of backup is the Termux CLI in `mobile/cli/`, separate from the Android app:
 
 | Command | Purpose |
 |---|---|
