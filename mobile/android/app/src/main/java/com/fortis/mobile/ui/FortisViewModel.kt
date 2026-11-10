@@ -19,7 +19,10 @@ class FortisViewModel(application: Application) : AndroidViewModel(application) 
 
     fun clearActiveDevice() = ActiveDeviceProvider.setActiveDevice(null)
 
-    fun savePaired(device: Device) = repository.save(device)
+    fun savePaired(device: Device) {
+        repository.save(device)
+        com.fortis.mobile.service.EventsService.start(getApplication())
+    }
 
     fun makeVaultLaptop(device: Device) = repository.save(device.copy(isVaultLaptop = true))
 
@@ -34,5 +37,6 @@ class FortisViewModel(application: Application) : AndroidViewModel(application) 
         repository.remove(uuid)
         DeviceKeys.delete(uuid)
         if (activeDevice.value?.uuid == uuid) clearActiveDevice()
+        com.fortis.mobile.service.EventsService.start(getApplication())
     }
 }

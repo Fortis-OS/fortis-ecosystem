@@ -38,6 +38,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.fortis.mobile.service.EventsService.start(this)
         setContent {
             FortisMobileTheme {
                 FortisMobileApp()

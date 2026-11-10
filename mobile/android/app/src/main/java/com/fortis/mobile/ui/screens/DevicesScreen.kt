@@ -63,6 +63,7 @@ fun DevicesScreen(viewModel: FortisViewModel) {
             Text("No laptop paired yet. On the laptop run:\n\nfortis pair\n\nthen tap PAIR LAPTOP and scan the QR code.",
                 fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (devices.isNotEmpty()) SudoSettingsCard()
         LazyColumn(Modifier.weight(1f)) {
             items(devices, key = { it.uuid }) { device ->
                 Card(
