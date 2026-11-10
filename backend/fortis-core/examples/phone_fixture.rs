@@ -80,7 +80,7 @@ fn main() {
 }
 
 fn sudo_frame() {
-    use fortis_core::sign::{canonical_approval, AgentKey, ApprovalRequest, Decision};
+    use fortis_core::sign::{canonical_approval, canonical_session, AgentKey, ApprovalRequest, Decision};
     let key = AgentKey::generate();
     let req = ApprovalRequest::new("ganesh", "laptop", "sudo", "pts/3", 1_731_110_400);
     let msg = json!({
@@ -102,6 +102,8 @@ fn sudo_frame() {
             "frame": frame, "forged": forged, "tampered": tampered,
             "approve_hex": hex::encode(canonical_approval(&req, Decision::Approve).unwrap()),
             "deny_hex": hex::encode(canonical_approval(&req, Decision::Deny).unwrap()),
+            "session": { "session_id": req.request_id, "nonce": req.nonce, "issued_at": req.issued_at, "kind": "input",
+                "hex": hex::encode(canonical_session(&req.request_id, &req.nonce, req.issued_at, "input").unwrap()) },
         })
     );
 }
