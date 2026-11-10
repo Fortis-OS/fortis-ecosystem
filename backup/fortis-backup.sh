@@ -13,6 +13,7 @@ set -uo pipefail
 # 3 = Snapshot Failure
 # 4 = Destination Unavailable
 # 5 = Lock exists (Already running)
+# 6 = Local backup OK, but remote (mobile) sync failed
 
 # ==========================================
 # 1. CONFIGURATION & SECURITY VALIDATION
@@ -133,7 +134,9 @@ if [[ "${1:-}" == "restore" ]]; then
     fi
 
     echo "Restoring..."
+    mkdir -p "$(dirname "$TARGET_PATH")"
     if [[ -d "$SOURCE_PATH" ]]; then
+        mkdir -p "$TARGET_PATH"
         rsync -a --delete "$SOURCE_PATH/" "$TARGET_PATH/"
     else
         rsync -a "$SOURCE_PATH" "$(dirname "$TARGET_PATH")/"
@@ -227,6 +230,16 @@ for PROJECT in "${PROJECTS[@]+"${PROJECTS[@]}"}"; do
         --exclude="build" \
         --exclude=".next" \
         --exclude="target" \
+        --exclude=".venv" \
+        --exclude="venv" \
+        --exclude="env" \
+        --exclude="__pycache__" \
+        --exclude="*.pyc" \
+        --exclude=".pytest_cache" \
+        --exclude=".mypy_cache" \
+        --exclude=".ruff_cache" \
+        --exclude=".cache" \
+        --exclude="wandb" \
         "$PROJECT/" "$BACKUP_ROOT/Mirror/Projects/$PROJECT_NAME/" 2>>"$MIRROR_LOG"
     if [[ $? -eq 0 ]]; then
         log_mirror "✔ $PROJECT_NAME"
@@ -327,23 +340,69 @@ if [[ ! -d "$DAILY_SNAP_DIR" ]]; then
             log_daily "⚠ WARNING: Partial snapshot — some mirror items failed. This snapshot may be incomplete."
         fi
 
-        # Fix #7: Use a Bash array for --link-dest (safe with paths containing spaces).
-        LATEST_DAILY=$(find "$BACKUP_ROOT/FortisGIT/Daily" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -r | head -n 1)
-        LINK_DEST_ARGS=()
-        if [[ -n "${LATEST_DAILY:-}" && "$LATEST_DAILY" != "$DAILY_SNAP_DIR" ]]; then
-            LINK_DEST_ARGS=("--link-dest=$LATEST_DAILY")
+        # Fix #7: Link-dest configuration for hard-link deduplication
+        LATEST_DAILY=$(find "$BACKUP_ROOT/FortisGIT/Daily" -maxdepth 1 -mindepth 1 -type d ! -name "$TODAY" 2>/dev/null | sort -r | head -n 1)
+        LINK_DEST_PROJECTS=()
+        LINK_DEST_SECRETS=()
+        if [[ -n "${LATEST_DAILY:-}" ]]; then
+            if [[ -d "$LATEST_DAILY/Projects" ]]; then
+                LINK_DEST_PROJECTS=("--link-dest=$LATEST_DAILY/Projects")
+            fi
+            if [[ -d "$LATEST_DAILY/Secrets" ]]; then
+                LINK_DEST_SECRETS=("--link-dest=$LATEST_DAILY/Secrets")
+            fi
             log_daily "Using previous snapshot for hard-links: $LATEST_DAILY"
         else
             log_daily "No previous snapshot found. Performing full initial snapshot."
         fi
 
-        rsync -a "${LINK_DEST_ARGS[@]+"${LINK_DEST_ARGS[@]}"}" \
-            "$BACKUP_ROOT/Mirror/Projects" "$DAILY_SNAP_DIR/" 2>>"$DAILY_LOG"
-        if [[ $? -ne 0 ]]; then log_daily "✖ Projects snapshot failed"; SNAPSHOT_FAILED=1; fi
+        mkdir -p "$DAILY_SNAP_DIR/Projects" "$DAILY_SNAP_DIR/Secrets"
 
-        rsync -a "${LINK_DEST_ARGS[@]+"${LINK_DEST_ARGS[@]}"}" \
-            "$BACKUP_ROOT/Mirror/Secrets" "$DAILY_SNAP_DIR/" 2>>"$DAILY_LOG"
-        if [[ $? -ne 0 ]]; then log_daily "✖ Secrets snapshot failed"; SNAPSHOT_FAILED=1; fi
+        # Per-project snapshot execution and logging (matches mirror format)
+        log_daily "--- Projects Snapshot ---"
+        DAILY_SUCCESS_PROJECTS=0
+        for PROJECT in "${PROJECTS[@]+"${PROJECTS[@]}"}"; do
+            PROJECT_NAME=$(basename "$PROJECT")
+            if [[ ! -d "$BACKUP_ROOT/Mirror/Projects/$PROJECT_NAME" ]]; then
+                log_daily "✖ $PROJECT_NAME (Mirror source not found)"
+                SNAPSHOT_FAILED=1
+                continue
+            fi
+            rsync -a "${LINK_DEST_PROJECTS[@]+"${LINK_DEST_PROJECTS[@]}"}" \
+                "$BACKUP_ROOT/Mirror/Projects/$PROJECT_NAME" "$DAILY_SNAP_DIR/Projects/" 2>>"$DAILY_LOG"
+            if [[ $? -eq 0 ]]; then
+                log_daily "✔ $PROJECT_NAME"
+                ((DAILY_SUCCESS_PROJECTS++))
+            else
+                log_daily "✖ $PROJECT_NAME (snapshot failed)"
+                SNAPSHOT_FAILED=1
+            fi
+        done
+
+        # Per-secret snapshot execution and logging (matches mirror format)
+        log_daily "--- Secrets Snapshot ---"
+        DAILY_SUCCESS_SECRETS=0
+        for SECRET in "${SECRETS[@]+"${SECRETS[@]}"}"; do
+            SECRET_NAME=$(basename "$SECRET")
+            if [[ ! -e "$BACKUP_ROOT/Mirror/Secrets/$SECRET_NAME" ]]; then
+                log_daily "✖ $SECRET_NAME (Mirror source not found)"
+                SNAPSHOT_FAILED=1
+                continue
+            fi
+            rsync -a "${LINK_DEST_SECRETS[@]+"${LINK_DEST_SECRETS[@]}"}" \
+                "$BACKUP_ROOT/Mirror/Secrets/$SECRET_NAME" "$DAILY_SNAP_DIR/Secrets/" 2>>"$DAILY_LOG"
+            if [[ $? -eq 0 ]]; then
+                log_daily "✔ $SECRET_NAME"
+                ((DAILY_SUCCESS_SECRETS++))
+            else
+                log_daily "✖ $SECRET_NAME (snapshot failed)"
+                SNAPSHOT_FAILED=1
+            fi
+        done
+
+        log_daily "--- Snapshot Verification ---"
+        log_daily "Projects : $DAILY_SUCCESS_PROJECTS / $EXPECTED_PROJECTS snapshotted"
+        log_daily "Secrets  : $DAILY_SUCCESS_SECRETS / $EXPECTED_SECRETS snapshotted"
 
         # Fix #16: Verify the snapshot directory was actually populated.
         # An empty snapshot directory means rsync silently wrote nothing — worse than no snapshot.
@@ -378,12 +437,12 @@ if [[ "$DAY_OF_WEEK" -eq 7 ]]; then
         mkdir -p "$WEEKLY_SNAP_DIR/Memories"
         log_weekly "[$TIMESTAMP] Starting FortisGIT Weekly Snapshot..."
 
-        LATEST_WEEKLY=$(find "$BACKUP_ROOT/FortisGIT/Weekly" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -r | head -n 1)
+        LATEST_WEEKLY=$(find "$BACKUP_ROOT/FortisGIT/Weekly" -maxdepth 1 -mindepth 1 -type d ! -name "$TODAY" 2>/dev/null | sort -r | head -n 1)
         # Fix #7: Proper Bash array for weekly link-dest.
         # Point link-dest to the previous weekly's Memories/ subdirectory so that
         # relative paths resolve correctly when syncing individual memory items.
         LINK_DEST_ARGS_W=()
-        if [[ -n "${LATEST_WEEKLY:-}" && "$LATEST_WEEKLY" != "$WEEKLY_SNAP_DIR" ]]; then
+        if [[ -n "${LATEST_WEEKLY:-}" ]]; then
             LINK_DEST_ARGS_W=("--link-dest=$LATEST_WEEKLY/Memories")
             log_weekly "Using previous weekly snapshot: $LATEST_WEEKLY"
         fi
@@ -437,9 +496,11 @@ fi
 log_mirror "Cleaning up old snapshots..."
 if [[ -d "$BACKUP_ROOT/FortisGIT/Daily" ]]; then
     find "$BACKUP_ROOT/FortisGIT/Daily" -maxdepth 1 -mindepth 1 -type d -mtime +14 -exec rm -rf {} + 2>/dev/null || true
+    find "$BACKUP_ROOT/Logs/snapshots/daily" -maxdepth 1 -type f -mtime +14 -exec rm -f {} + 2>/dev/null || true
 fi
 if [[ -d "$BACKUP_ROOT/FortisGIT/Weekly" ]]; then
     find "$BACKUP_ROOT/FortisGIT/Weekly" -maxdepth 1 -mindepth 1 -type d -mtime +56 -exec rm -rf {} + 2>/dev/null || true
+    find "$BACKUP_ROOT/Logs/snapshots/weekly" -maxdepth 1 -type f -mtime +56 -exec rm -f {} + 2>/dev/null || true
 fi
 log_mirror "✔ Cleanup complete"
 log_mirror ""
@@ -449,6 +510,7 @@ log_mirror ""
 # PHASE D: REMOTE OFF-SITE SYNC (TAILSCALE)
 # ==========================================
 # Fix #6: Remote sync now runs AFTER cleanup (correct order: A→B→C→D).
+REMOTE_FAILED=0
 if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
     log_mirror "[$TIMESTAMP] Starting Remote Off-Site Sync (Tailscale)..."
 
@@ -502,28 +564,77 @@ if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
     if [[ $REMOTE_AVAILABLE -eq 1 ]]; then
         log_mirror "Mobile device READY! Syncing today's snapshot..."
 
-        # Ensure target directory exists on remote
-        ssh "${SSH_OPTS[@]}" "$MOBILE_IP" "mkdir -p ~/FortisVault/Daily/$TODAY" 2>/dev/null
+        # Dynamically find the previous snapshot name to use for remote deduplication.
+        LATEST_LOCAL=$(find "$BACKUP_ROOT/FortisGIT/Daily" -maxdepth 1 -mindepth 1 -type d ! -name "$TODAY" 2>/dev/null | sort -r | head -n 1)
+        REMOTE_LINK_DEST=()
+        if [[ -n "${LATEST_LOCAL:-}" ]]; then
+            PREV_SNAP=$(basename "$LATEST_LOCAL")
+            # Verify the previous snapshot actually exists on the mobile device before using it for hard-links
+            if ssh "${SSH_OPTS[@]}" "$MOBILE_IP" "[ -d ~/FortisVault/Daily/$PREV_SNAP ]" 2>/dev/null; then
+                # --link-dest path is evaluated relative to the destination directory
+                REMOTE_LINK_DEST=("--link-dest=../$PREV_SNAP")
+                log_mirror "Using remote deduplication against previous snapshot: $PREV_SNAP"
+            else
+                log_mirror "Previous snapshot '$PREV_SNAP' not found on mobile device; performing full sync."
+            fi
+        fi
 
         # Push today's freshly created snapshot to remote
-        # Fix: Replaced -a (archive) with -rlt (recursive, links, times) to avoid 
-        # Android metadata hang-ups (owner/group/perms) at the end of the transfer.
-        # Added --timeout=60, --omit-dir-times, and --inplace to fix Android filesystem stalls.
-        rsync -rlt --omit-dir-times --inplace --timeout=60 -e "$SSH_CMD_STR" \
-            "$BACKUP_ROOT/FortisGIT/Daily/$TODAY/" \
-            "$MOBILE_IP:~/FortisVault/Daily/$TODAY/" 2>>"$MIRROR_LOG"
-
-        if [[ $? -eq 0 ]]; then
-            log_mirror "✔ Remote Sync completed successfully."
+        # Fix: Replaced -a (archive) with -rlt (recursive, links, times) to avoid Android metadata hang-ups.
+        # Added --link-dest for deduplication. Removed --inplace as it is incompatible with --link-dest.
+        # Retry/resume: the phone can drop the SSH session mid-transfer (Android killing
+        # Termux sshd, device sleep). Each retry re-runs rsync, which skips files already
+        # transferred; --partial-dir keeps half-sent files so large files resume instead
+        # of restarting from zero.
+        if [[ ! -d "$BACKUP_ROOT/FortisGIT/Daily/$TODAY" ]]; then
+            log_mirror "✖ No local snapshot for $TODAY (snapshot was skipped). Nothing to push."
+            REMOTE_FAILED=1
         else
-            log_mirror "✖ Remote Sync failed during rsync transfer."
+            REMOTE_MAX_ATTEMPTS=4
+            for ((attempt=1; attempt<=REMOTE_MAX_ATTEMPTS; attempt++)); do
+                if [[ $attempt -gt 1 ]]; then
+                    # Wait up to 60s for the phone's sshd to come back before retrying.
+                    log_mirror "Retrying remote sync (attempt $attempt/$REMOTE_MAX_ATTEMPTS)..."
+                    for ((w=1; w<=6; w++)); do
+                        nc -z -w 3 "$MOBILE_IP" "$MOBILE_PORT" 2>/dev/null && break
+                        sleep 10
+                    done
+                fi
+
+                # Ensure target directory exists on remote
+                ssh "${SSH_OPTS[@]}" "$MOBILE_IP" "mkdir -p ~/FortisVault/Daily/$TODAY" 2>/dev/null
+
+                rsync -rlt --omit-dir-times --timeout=60 --partial-dir=.rsync-partial \
+                    "${REMOTE_LINK_DEST[@]+"${REMOTE_LINK_DEST[@]}"}" -e "$SSH_CMD_STR" \
+                    "$BACKUP_ROOT/FortisGIT/Daily/$TODAY/" \
+                    "$MOBILE_IP:~/FortisVault/Daily/$TODAY/" 2>>"$MIRROR_LOG"
+                RSYNC_RC=$?
+
+                if [[ $RSYNC_RC -eq 0 ]]; then
+                    REMOTE_FAILED=0
+                    log_mirror "✔ Remote Sync completed successfully (attempt $attempt/$REMOTE_MAX_ATTEMPTS)."
+                    break
+                fi
+                REMOTE_FAILED=1
+                log_mirror "✖ Remote Sync attempt $attempt/$REMOTE_MAX_ATTEMPTS failed (rsync exit $RSYNC_RC)."
+            done
+            if [[ $REMOTE_FAILED -ne 0 ]]; then
+                log_mirror "✖ Remote Sync failed after $REMOTE_MAX_ATTEMPTS attempts."
+            fi
         fi
+
+        # Prune older remote snapshots on mobile device (retain last 7 days) to prevent storage exhaustion
+        log_mirror "Cleaning up old remote snapshots on mobile (retention: 7 days)..."
+        ssh "${SSH_OPTS[@]}" "$MOBILE_IP" \
+            "find ~/FortisVault/Daily -maxdepth 1 -mindepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null || true"
+        log_mirror "✔ Remote cleanup complete."
         
         # Stop Backup Mode on the phone to release wake lock and shut down sshd
         ssh "${SSH_OPTS[@]}" "$MOBILE_IP" "bash /data/data/com.termux/files/home/.local/bin/fortis-mobile stop" >/dev/null 2>&1 || true
-        log_mirror "Told mobile device to stop Backup Mode."
+        log_mirror "Told mobile device to stop Backup Mode." 
     else
         log_mirror "✖ Mobile device did not come online after 5 minutes. Skipping Remote Sync."
+        REMOTE_FAILED=1
     fi
     log_mirror ""
 fi
@@ -537,6 +648,8 @@ log_mirror "Backup finished in ${DURATION} seconds."
 
 if [[ $MIRROR_FAILED -ne 0 || $SNAPSHOT_FAILED -ne 0 ]]; then
     log_mirror "Status: COMPLETED WITH ERRORS"
+elif [[ $REMOTE_FAILED -ne 0 ]]; then
+    log_mirror "Status: LOCAL SUCCESS, REMOTE SYNC FAILED"
 else
     log_mirror "Status: SUCCESS"
 fi
@@ -547,6 +660,9 @@ if [[ $MIRROR_FAILED -ne 0 ]]; then
 fi
 if [[ $SNAPSHOT_FAILED -ne 0 ]]; then
     exit 3
+fi
+if [[ $REMOTE_FAILED -ne 0 ]]; then
+    exit 6
 fi
 
 exit 0
