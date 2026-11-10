@@ -157,6 +157,19 @@ enabled = true
 device = "/dev/video10"
 ```
 
+For remote input on **Wayland** the agent uses `ydotool` (on X11 it uses `xdotool`). `ydotoold` runs as your user and needs `/dev/uinput`, which is root-only by default:
+
+```bash
+sudo apt install -y ydotool
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/80-fortis-uinput.rules
+sudo udevadm control --reload && sudo udevadm trigger --name-match=uinput
+sudo usermod -aG input "$USER"    # then log out and back in
+systemctl --user enable --now ydotool
+sleep 3; ydotool type hello      # "hello" appears where the cursor is
+```
+
+Members of the `input` group can already read every keyboard; this also lets them create virtual ones. On a single-user laptop that's the same person.
+
 For the webcam, create the loopback device once:
 
 ```bash
