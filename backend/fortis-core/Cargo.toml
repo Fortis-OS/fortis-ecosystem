@@ -28,3 +28,7 @@ zeroize = { version = "1.8", features = ["zeroize_derive"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[[example]]
+name = "phone_fixture"
+required-features = ["db"]
