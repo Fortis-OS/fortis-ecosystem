@@ -566,7 +566,7 @@ Limits and allowed `key` names: security §7.5. Invalid messages are dropped; th
 { "port": 48213, "token": "hex32" }
 ```
 
-The agent takes the phone's address from the Tailscale peer address of this request, pulls `http://<phone>:<port>/<token>/stream` with `ffmpeg` into the configured `v4l2loopback` device, and returns `200 {"device": "/dev/video10"}`. Only one stream at a time (`409` otherwise). `403` if disabled.
+The phone's stream is plain HTTP/1.0 with `Content-Type: video/x-motion-jpeg` and a body of JPEG frames back to back (what ffmpeg's `-f mjpeg` reads); no multipart boundaries. The agent takes the phone's address from the Tailscale peer address of this request, pulls `http://<phone>:<port>/<token>/stream` with `ffmpeg` into the configured `v4l2loopback` device, and returns `200 {"device": "/dev/video10"}`. Only one stream at a time (`409` otherwise). `403` if disabled.
 
 ### `POST /webcam/stop`
 

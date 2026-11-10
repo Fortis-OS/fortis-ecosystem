@@ -461,14 +461,16 @@ Typing on the laptop is equivalent to running any command as the user, so this f
 - Disabled unless `input.enabled = true` in `agent.toml` (default **false**).
 - Backend: `xdotool` on X11, `ydotool` on Wayland (needs the `ydotoold` service and `uinput` access). The agent picks one at start-up and reports it in `/capabilities`; if neither works the feature is unavailable.
 - Events are validated before use: mouse deltas clamped to ±2000, scroll to ±50, buttons 1–3, keys from a fixed allow-list of key names, `type` text max 1000 characters with control characters removed. Text is passed to `xdotool type --` / `ydotool type --` as a single argument, never through a shell.
-- Max 200 events per second per session; excess is dropped.
+- Max 200 events per second per session; excess is dropped. The phone coalesces mouse moves to about 50 per second and clamps every value to these limits before sending.
+- Leaving the remote-input screen on the phone ends the session (`DELETE /sessions/{id}`).
 - Bluetooth HID mode (phone acts as a Bluetooth keyboard/mouse) does not involve the agent and is governed by normal Bluetooth pairing.
 
 ### 7.6 Phone camera as a webcam
 
 - The phone serves an MJPEG stream **only** on its Tailscale address (never `0.0.0.0` or Wi-Fi), on a random port, with a random 128-bit token in the path. It accepts connections only from the paired laptop's Tailscale address, and only one at a time.
 - The phone calls `POST /api/v1/webcam/start` `{ port, token }`; the agent pulls `http://<phone tailscale ip>:<port>/<token>/stream` into a `v4l2loopback` device using `ffmpeg` with fixed arguments. The phone's address comes from the Tailscale peer address of the signed request, not from the request body.
-- The stream stops when the phone leaves the webcam screen, on `POST /api/v1/webcam/stop`, or after 1 hour. The phone shows the Android camera-in-use indicator and a persistent notification while streaming.
+- Requests whose path isn't exactly `/<token>/stream` get `404`; the token is compared in constant time. A connection from any address other than the paired laptop's, or while another viewer is connected, is closed without a reply.
+- The stream stops when the phone leaves the webcam screen (or the app goes to the background), on `POST /api/v1/webcam/stop`, or after 1 hour. The phone shows the Android camera-in-use indicator and a persistent notification while streaming.
 - Disabled unless `webcam.enabled = true` in `agent.toml` (default **false**) and a `v4l2loopback` device exists.
 
 ### 7.7 Not provided

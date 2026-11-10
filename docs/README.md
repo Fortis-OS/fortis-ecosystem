@@ -112,7 +112,8 @@ The code is being brought in line with this specification. Status per area (upda
 | fortis-cli | **Done** — all commands incl. `pair` (QR) and `sudo fortis pam-enroll` |
 | fortis-desktop | **Done** — release build runs against the agent; unlock, entries, 2FA, copy/auto-clear, add/edit/delete, lock checked by hand |
 | Notifications, sessions, remote input, webcam endpoints | **Done** (agent side; tested without real xdotool/ydotool/ffmpeg) |
-| fortis-mobile app — screens (dashboard, control, files, monitor, widget, camera sync, notifications) | **Done** on the signed v2 API (phase 1). Network remote input and webcam removed until phase 4 |
+| fortis-mobile app — screens (dashboard, control, files, monitor, widget, camera sync, notifications) | **Done** on the signed v2 API (phase 1) |
+| fortis-mobile app — network remote input + phone webcam (phase 4) | **Done** — fingerprint-confirmed input session (session bytes checked against fortis-core); webcam server checked on the JVM incl. real `ffmpeg` pulling it with the agent's options. Not yet tried with a real phone + laptop |
 | fortis-bindings (phone crypto API) | **Done** — key derivation, entry crypto, TOTP, canonical bytes, signature verify |
 | fortis-mobile app — security (per-pairing P-256 keys, signed requests, phone vault, sudo prompts) | Keys, signed requests, pairing, the **phone vault** (sync round-trip verified against fortis-core's push rules) and **sudo prompts done** — events service, full-screen approval, fingerprint-signed answers; frame verification and approval bytes verified against fortis-core on the emulator. Not yet tried with a real phone + real sudo |
 | fortis-mobile app — terminal screen | **Removed** |
