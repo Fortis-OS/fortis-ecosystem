@@ -714,6 +714,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -729,6 +733,8 @@ internal interface UniffiLib : Library {
         
     }
 
+    fun uniffi_fortis_bindings_fn_func_autofill_save_url(`webUrl`: RustBuffer.ByValue,`package`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_fortis_bindings_fn_func_canonical_approval(`requestJson`: RustBuffer.ByValue,`decision`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_fortis_bindings_fn_func_canonical_request(`method`: RustBuffer.ByValue,`pathAndQuery`: RustBuffer.ByValue,`timestamp`: Long,`nonceHex`: RustBuffer.ByValue,`body`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -747,6 +753,8 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_fortis_bindings_fn_func_key_fingerprint(`pubkeyB64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_fortis_bindings_fn_func_login_matches(`urls`: RustBuffer.ByValue,`webUrl`: RustBuffer.ByValue,`package`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     fun uniffi_fortis_bindings_fn_func_totp_remaining_secs(`period`: Int,`unixTime`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     fun uniffi_fortis_bindings_fn_func_unwrap_vault_key(`wrapKey`: RustBuffer.ByValue,`wrapped`: RustBuffer.ByValue,`vaultId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -865,6 +873,8 @@ internal interface UniffiLib : Library {
     ): Unit
     fun ffi_fortis_bindings_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
+    fun uniffi_fortis_bindings_checksum_func_autofill_save_url(
+    ): Short
     fun uniffi_fortis_bindings_checksum_func_canonical_approval(
     ): Short
     fun uniffi_fortis_bindings_checksum_func_canonical_request(
@@ -882,6 +892,8 @@ internal interface UniffiLib : Library {
     fun uniffi_fortis_bindings_checksum_func_generate_totp(
     ): Short
     fun uniffi_fortis_bindings_checksum_func_key_fingerprint(
+    ): Short
+    fun uniffi_fortis_bindings_checksum_func_login_matches(
     ): Short
     fun uniffi_fortis_bindings_checksum_func_totp_remaining_secs(
     ): Short
@@ -906,6 +918,9 @@ private fun uniffiCheckContractApiVersion(lib: UniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: UniffiLib) {
+    if (lib.uniffi_fortis_bindings_checksum_func_autofill_save_url() != 15011.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_fortis_bindings_checksum_func_canonical_approval() != 29670.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -931,6 +946,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fortis_bindings_checksum_func_key_fingerprint() != 45922.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_fortis_bindings_checksum_func_login_matches() != 1205.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_fortis_bindings_checksum_func_totp_remaining_secs() != 57868.toShort()) {
@@ -1182,6 +1200,73 @@ public object FfiConverterTypeBindingError : FfiConverterRustBuffer<BindingExcep
     }
 
 }
+
+
+
+
+public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?> {
+    override fun read(buf: ByteBuffer): kotlin.String? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterString.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.String?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterString.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.String?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterString.write(value, buf)
+        }
+    }
+}
+
+
+
+
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+        /**
+         * URL to store in a Login saved from this form, or None if it can't be saved
+         * (e.g. a plain-http page).
+         */ fun `autofillSaveUrl`(`webUrl`: kotlin.String?, `package`: kotlin.String?): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_autofill_save_url(
+        FfiConverterOptionalString.lower(`webUrl`),FfiConverterOptionalString.lower(`package`),_status)
+}
+    )
+    }
+    
+
         /**
          * Bytes to sign with the approval key. `request_json` is the `sudo_request`
          * event payload's challenge fields; `decision` is "approve" or "deny".
@@ -1292,6 +1377,19 @@ public object FfiConverterTypeBindingError : FfiConverterRustBuffer<BindingExcep
     uniffiRustCallWithError(BindingException) { _status ->
     UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_key_fingerprint(
         FfiConverterString.lower(`pubkeyB64`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Does a Login with `urls` match the form? `web_url` is the page URL (or
+         * `https://<webDomain>`) when Android reports one; otherwise `package`.
+         */ fun `loginMatches`(`urls`: List<kotlin.String>, `webUrl`: kotlin.String?, `package`: kotlin.String?): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_fortis_bindings_fn_func_login_matches(
+        FfiConverterSequenceString.lower(`urls`),FfiConverterOptionalString.lower(`webUrl`),FfiConverterOptionalString.lower(`package`),_status)
 }
     )
     }

@@ -59,6 +59,32 @@
                 android:resource="@xml/fortis_widget_info" />
         </receiver>
 
+        <!-- Password autofill (docs/security §6.5) -->
+        <service
+            android:name=".autofill.FortisAutofillService"
+            android:label="Fortis"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service" />
+        </service>
+        <activity
+            android:name=".autofill.AutofillAuthActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.FortisMobile" />
+        <activity
+            android:name=".autofill.AutofillSaveActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.FortisMobile" />
+
         <!-- Sudo approvals (docs/security §4.3, architecture §5.4) -->
         <activity
             android:name=".sudo.SudoApprovalActivity"

@@ -71,6 +71,25 @@ fun MoreScreen(
                 onClick = onOpenAuthenticator,
                 modifier = Modifier.padding(bottom = FortisSpacing.buttonGap)
             )
+            // Password autofill (security §6.5): Fortis must be the selected autofill service.
+            val afm = remember { context.getSystemService(android.view.autofill.AutofillManager::class.java) }
+            var autofillOn by remember { mutableStateOf(afm?.hasEnabledAutofillServices() == true) }
+            val afLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+            ) { autofillOn = afm?.hasEnabledAutofillServices() == true }
+            FortisActionButton(
+                text = if (autofillOn) "AUTOFILL: ON" else "TURN_ON_AUTOFILL",
+                onClick = {
+                    if (autofillOn) {
+                        runCatching { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE, android.net.Uri.parse("package:${context.packageName}"))) }
+                    } else {
+                        runCatching {
+                            afLauncher.launch(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE, android.net.Uri.parse("package:${context.packageName}")))
+                        }.onFailure { Toast.makeText(context, "Open Settings → Passwords → Autofill service and pick Fortis", Toast.LENGTH_LONG).show() }
+                    }
+                },
+                modifier = Modifier.padding(bottom = FortisSpacing.buttonGap)
+            )
         }
 
         Spacer(modifier = Modifier.height(FortisSpacing.sectionGap))
