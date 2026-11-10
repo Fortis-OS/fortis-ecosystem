@@ -51,8 +51,9 @@ graph LR
 | `fortis-bindings` | fortis-backend | Rust cdylib (UniFFI) | Exposes `fortis-core` crypto + TOTP to the Android app. |
 | `fortis-cli` | fortis-cli | Rust bin | Terminal client over the IPC socket. Also `pam-enroll`. |
 | `fortis-desktop` | fortis-desktop | Tauri v2 (Rust + TS) | Desktop vault UI. Talks to the agent only from its Rust side. |
-| `fortis-mobile` (app) | fortis-mobile (`android/`) | Kotlin / Compose | Phone vault, TOTP, sudo approvals, laptop remote, phone-as-webcam, Bluetooth keyboard/mouse, notification mirroring, camera-roll sync, home-screen widget. |
+| `fortis-mobile` (app) | fortis-mobile (`android/`) | Kotlin / Compose | Phone vault, TOTP, password autofill + save (Android Autofill framework), sudo approvals, laptop remote, phone-as-webcam, Bluetooth keyboard/mouse, notification mirroring, camera-roll sync, home-screen widget. |
 | `fortis-mobile` (Termux CLI) | fortis-mobile (`cli/`) | Bash | Runs in Termux; starts/stops the phone's `sshd` for backups and reports readiness to `fortis-backup` (`status --json`, `start`, `stop`). |
+| `fortis-browser` | fortis-browser | WebExtension (JS) + Rust bin | Browser autofill/save on the laptop: extension for Firefox/Chromium + `fortis-browser-host` (native messaging → agent IPC). |
 | `fortis-backup` | fortis-backup | Bash + systemd | Mirror + hard-linked snapshots + off-site push to the phone. Independent of the agent. |
 
 Out of scope: `fortis-observe` (separate analytics project), `fortis-lock` (dropped).
@@ -385,7 +386,29 @@ sequenceDiagram
 - **Camera-roll sync:** a daily WorkManager job uploads new photos to `POST /files/drop?dest=camera` (unmetered network only).
 - **Send file / clipboard:** manual, from the Files and Dashboard screens.
 
-### 5.9 Backup
+### 5.9 Autofill
+
+```mermaid
+sequenceDiagram
+    participant B as Browser page
+    participant X as fortis-browser extension
+    participant H as fortis-browser-host
+    participant A as fortis-agent
+    X->>H: match {url}  (user opened the popup / pressed Ctrl+Shift+L)
+    H->>A: IPC browser_match
+    A-->>X: [{id, title, username}]
+    X->>H: fill {id, url}
+    H->>A: IPC browser_fill (agent re-checks url ↔ entry)
+    A-->>X: {username, password}
+    X->>B: set field values (top frame only)
+    B->>X: form submitted with a new password
+    X->>H: save_check → user taps Save in the popup → save
+    H->>A: IPC browser_save → vault updated → next phone sync
+```
+
+On the phone, Android's Autofill framework calls `FortisAutofillService`; it offers "Unlock Fortis", the user authenticates, and Fortis returns the matching logins from its own vault copy. Saves become phone edits and sync to the vault laptop. A login saved in either place is filled in the other after the next sync.
+
+### 5.10 Backup
 
 `fortis-backup` is a separate systemd timer job (daily 23:45, `Persistent=true`):
 

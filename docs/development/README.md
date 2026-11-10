@@ -24,6 +24,9 @@
 ├── fortis-mobile/
 │   ├── android/           # Android app (Gradle)
 │   └── cli/               # Termux backup CLI (Bash)
+├── fortis-browser/
+│   ├── extension/         # WebExtension (Firefox + Chromium, Manifest V3)
+│   └── host/              # Rust bin "fortis-browser-host" (native messaging)
 ├── fortis-backup/         # Bash
 └── docs/
 ```

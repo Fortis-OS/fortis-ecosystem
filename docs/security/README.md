@@ -139,7 +139,17 @@ The plaintext is the JSON-serialised `VaultEntry`, including the folder. Titles,
 - The agent **SHOULD** also lock on the logind `Lock` signal for the user's session.
 - Vault endpoints return `423 Locked` while locked.
 
-### 3.6 Secrets in memory
+### 3.6 Login matching (autofill)
+
+Autofill on both devices uses **one** rule, implemented once in `fortis-core` (`urlmatch`) and exposed to the phone through `fortis-bindings`:
+
+- A Login's `urls` are its targets. Each is either a web address (`https://github.com`) or an Android app (`androidapp://com.github.android`).
+- **Web:** the page's host `P` matches a saved web URL with host `H` when `P == H` or `P` ends with `"." + H` (so `github.com` fills on `gist.github.com`, never on `github.com.evil.io` or `notgithub.com`). The host is lowercased, IDNs compared in punycode, a trailing dot and the port are ignored, IP addresses must match exactly. `H` must have at least one dot (no `"com"`).
+- **Scheme:** the page must be `https`, or `http` on `localhost` / `127.0.0.1`. A saved `https` login is never filled into an `http` page.
+- **App:** an Android app matches only an `androidapp://<package>` URL with exactly its package name. If Android reports a **web domain** for the form (a browser), the web rule is used and the package name is ignored — so an app can't claim a site's password by being a browser.
+- No match → nothing is offered. There is no fuzzy matching on titles.
+
+### 3.7 Secrets in memory
 
 - All secret strings use `SecretString` (`zeroize::Zeroizing<String>`).
 - Secrets **MUST NOT** be logged. `Debug` output of secret types prints `"[redacted]"`.
@@ -404,7 +414,16 @@ The phone **MUST NOT** store any shared secret for talking to the agent (no bear
 | **Camera-roll sync** | Off by default. Uploads only new photos (tracked by MediaStore ID) into the laptop's camera folder (§7.3). Runs with WorkManager, only on unmetered network and Tailscale up. Reads through `MediaStore` content URIs, not file paths. |
 | **Clipboard send** | Only on an explicit user tap. |
 
-### 6.5 Services the phone runs
+### 6.5 Autofill (phone)
+
+`FortisAutofillService` plugs into Android's Autofill framework (user picks Fortis in Settings → Passwords → Autofill service). It works in apps and in browsers that support the framework (Chrome: Settings → Autofill services → "Autofill using another service"; Firefox: built in).
+
+- **Fill:** the service finds username/password fields (autofill hints, HTML `autocomplete`/`type`, input type; never by guessing from labels alone) and the target (web domain if Android reports one, else the package). It offers a single **"Unlock Fortis"** item; choosing it opens Fortis, which asks for the fingerprint / screen lock (local key, §6.2) and then shows only the matching logins (§3.6), by title and username. Nothing about the vault is sent to the requesting app until the user picks an entry.
+- **Save:** when a form with a password is submitted, Android asks Fortis; the user sees "Save to Fortis?" and, after unlocking, Fortis creates a Login (title = domain/app label, `urls` = the target) or, if a login for the same target and username exists, offers to update its password. The change is synced to the vault laptop like any phone edit (§6.3).
+- Fortis never fills its own screens, and ignores requests while the phone vault isn't set up.
+- Datasets carry only the chosen entry's username and password; no TOTP is filled automatically (it is copied to the clipboard on request, §6.3 rules apply).
+
+### 6.6 Services the phone runs
 
 | Service | Rule |
 |---|---|
@@ -473,7 +492,19 @@ Typing on the laptop is equivalent to running any command as the user, so this f
 - The stream stops when the phone leaves the webcam screen (or the app goes to the background), on `POST /api/v1/webcam/stop`, or after 1 hour. The phone shows the Android camera-in-use indicator and a persistent notification while streaming.
 - Disabled unless `webcam.enabled = true` in `agent.toml` (default **false**) and a `v4l2loopback` device exists.
 
-### 7.7 Not provided
+### 7.7 Browser extension (laptop)
+
+`fortis-browser` = a WebExtension for Firefox and Chromium-based browsers + `fortis-browser-host`, a native-messaging host that forwards a fixed set of messages to the agent's IPC socket (§7.2).
+
+- **Who can talk to it:** the browser starts the host only for the extension IDs in the host manifest (`allowed_extensions` for Firefox, `allowed_origins` with the pinned `chrome-extension://<id>/` for Chromium). Web pages can't reach native messaging. The host runs as the user, so it adds no access the user's own processes don't already have through IPC.
+- **Allowed messages only:** `status`, `unlock`, `lock`, `match`, `fill`, `totp`, `save_check`, `save`. Anything else is rejected by the host. Frames are limited to 64 KiB.
+- **Matching is enforced by the agent**, not the extension: `browser_fill` and `browser_totp` take the page URL and return secrets only if the entry matches it (§3.6); otherwise `403`.
+- **Fill only on user action:** from the toolbar popup or the keyboard shortcut (default `Ctrl+Shift+L`). Never on page load, never into hidden fields, only in the **top-level frame**, and only into fields whose frame origin equals the URL used for matching.
+- **Save:** when a page submits a form with a password, the extension asks the agent (`browser_save_check`) whether it's new or changed and, if so, shows "Save / Update / Never for this site" in its popup (badge on the icon). The pending login is held in extension memory only, for at most 5 minutes. "Never" sites are stored in extension storage as host names only.
+- The vault can be unlocked from the popup (the master password goes popup → host → agent IPC, never to a page) and follows the agent's auto-lock.
+- The extension stores no secrets on disk.
+
+### 7.8 Not provided
 
 There is **no remote shell / terminal** feature. Use SSH over Tailscale (`tailscale ssh` or `ssh`) instead; it has its own authentication and audit trail.
 
@@ -510,3 +541,6 @@ There is **no remote shell / terminal** feature. Use SSH over Tailscale (`tailsc
 - [ ] Phone webcam server bound to Tailscale IP only, random port + token, laptop-only, auto-stop
 - [ ] Notification mirroring and camera sync off by default; notification text escaped on the laptop
 - [ ] No remote shell endpoint exists
+- [ ] Autofill: one matching rule (§3.6) in `fortis-core`, used by the agent and the phone; no title-based matching; https only (except localhost)
+- [ ] Browser: native host allows only the listed messages and extension IDs; agent re-checks the URL for `browser_fill`; fill only on user action, top frame, visible fields
+- [ ] Phone autofill: vault unlock required for every fill; save goes through the user's confirmation

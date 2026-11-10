@@ -618,6 +618,21 @@ Error codes are the same as REST.
 | `backup_run` | — | any | `{started_at}` |
 | `sessions_list` | — | any | active fingerprint-confirmed sessions `[{session_id, device_id, kind, started_at}]` |
 | `sessions_end` | `{session_id?}` | any | ends one session, or all if omitted |
+| `browser_match` | `{url}` | unlocked | `{host, entries: [{id, title, username}]}` — Logins matching `url` (security §3.6); no secrets |
+| `browser_fill` | `{id, url}` | unlocked | `{username, password}`; `403` if the entry doesn't match `url` |
+| `browser_totp` | `{id, url}` | unlocked | `{code, remaining_secs}`; `403` if no match, `404` if no TOTP |
+| `browser_save_check` | `{url, username, password}` | unlocked | `{status: "new" \| "changed" \| "same", id?}` — `id` of the matching login with that username |
+| `browser_save` | `{url, username, password, id?}` | unlocked | `{id, action: "created" \| "updated"}`; with `id`, that login (must match `url`) gets the new password; without, a new Login titled with the host |
+
+#### Browser native messaging (`fortis-browser-host`)
+
+The browser frames each message as a 4-byte little-endian length + UTF-8 JSON (max 64 KiB here). Extension → host:
+
+```json
+{ "id": 7, "cmd": "match", "args": { "url": "https://github.com/login" } }
+```
+
+The host maps `status`, `unlock`, `lock` to the IPC commands of the same name and `match`/`fill`/`totp`/`save_check`/`save` to `browser_*`, and returns the IPC response unchanged (`{id, ok, data|error}`). Unknown `cmd` → `{ok:false, error:{code:"bad_request"}}`. Agent not running → `{ok:false, error:{code:"unavailable"}}`.
 
 ### `auth_request` (pam_fortis only)
 
@@ -659,4 +674,4 @@ If the PAM side closes the connection first (user pressed Ctrl-C), the agent sen
 | `/telemetry`, `/capabilities`, `/actions`, `/media`, `/clipboard`, `/files/*`, `/backup/logs`, `/tools/generate-password` | ✓ | ✓ | ✓ |
 | `/notify`, `/sessions*`, `/input`, `/webcam/*` | | ✓ | ✓ |
 
-There is no `/terminal`, `/exec` or shell endpoint (security §7.7).
+There is no `/terminal`, `/exec` or shell endpoint (security §7.8).
