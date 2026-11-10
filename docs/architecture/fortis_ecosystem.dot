@@ -1,0 +1,81 @@
+digraph G {
+    fontname="Helvetica,Arial,sans-serif"
+    node [fontname="Helvetica,Arial,sans-serif"]
+    edge [fontname="Helvetica,Arial,sans-serif"]
+
+    graph [
+        rankdir=LR,
+        nodesep=0.7,
+        ranksep=1.1,
+        pad="0.5",
+        bgcolor="#0D1117",
+        fontcolor="#FFFFFF",
+        splines=spline
+    ]
+
+    node [
+        shape=box,
+        style="rounded,filled",
+        fillcolor="#161B22",
+        color="#30363D",
+        fontcolor="#C9D1D9",
+        penwidth=1.5,
+        margin="0.3,0.15"
+    ]
+
+    edge [
+        color="#8B949E",
+        penwidth=1.5,
+        arrowsize=0.8,
+        fontcolor="#8B949E",
+        fontsize=10
+    ]
+
+    subgraph cluster_laptop {
+        label = "Laptop (Linux)"
+        color = "#8957E5"
+        fontcolor = "#8957E5"
+        style = "rounded,dashed"
+        penwidth = 2
+
+        desktop [label="fortis-desktop\n(Tauri v2)", fillcolor="#1F6FEB", fontcolor="#FFFFFF"]
+        cli     [label="fortis-cli\n(fortis)", fillcolor="#8957E5", fontcolor="#FFFFFF"]
+        pam     [label="pam_fortis.so\n(sudo, root)", fillcolor="#DA3633", fontcolor="#FFFFFF"]
+        trust   [label="/etc/fortis/pam/<user>.json\n(root-owned approval keys)", shape=note]
+
+        agent   [label="fortis-agent\n127.0.0.1:8023 | tailnet:8023\nIPC socket", fillcolor="#238636", fontcolor="#FFFFFF"]
+        core    [label="fortis-core\n(crypto / models / db)"]
+        db      [label="vault.db\n(SQLCipher + XChaCha20)", shape=cylinder]
+
+        backup  [label="fortis-backup\n(Bash / systemd timer)"]
+        drive   [label="/mnt/FortisVault", shape=cylinder]
+    }
+
+    subgraph cluster_phone {
+        label = "Phone (Android)"
+        color = "#238636"
+        fontcolor = "#238636"
+        style = "rounded,dashed"
+        penwidth = 2
+
+        mobile   [label="fortis-mobile app\n(vault, TOTP, sudo, remote,\nwebcam, BT keyboard)", fillcolor="#238636", fontcolor="#FFFFFF"]
+        keystore [label="Android Keystore\n(request + approval keys)", shape=note]
+        bindings [label="fortis-bindings\n(Rust via UniFFI)"]
+        termux   [label="Termux: sshd +\nfortis-mobile CLI\n(backup target)"]
+    }
+
+    desktop -> agent [label=" loopback HTTP\n bearer token", color="#1F6FEB"]
+    cli     -> agent [label=" Unix socket", color="#8957E5"]
+    pam     -> agent [label=" Unix socket\n auth_request", color="#DA3633"]
+    pam     -> trust [label=" verifies with", style=dashed, color="#DA3633"]
+
+    agent -> core
+    core  -> db [dir=both]
+
+    mobile -> agent [label=" Tailscale\n signed HTTP + events WS", color="#238636"]
+    mobile -> keystore [style=dashed]
+    mobile -> bindings
+
+    backup -> drive  [label=" mirror + snapshots"]
+    backup -> termux [label=" rsync/SSH over Tailscale", style=dashed]
+}
