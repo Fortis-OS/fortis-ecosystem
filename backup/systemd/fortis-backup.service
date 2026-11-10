@@ -1,0 +1,18 @@
+# /home/ganeshak11/.config/systemd/user/fortis-backup.service
+
+[Unit]
+Description=Fortis Automated Backup Service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+# Fix #11: Use %h (systemd home dir expansion) instead of a hardcoded username.
+# Fix #12: Use mountpoint -q instead of test -d — mountpoint verifies the drive is
+# actually mounted, whereas test -d would pass even on an empty unmounted directory.
+ExecStartPre=/usr/bin/mountpoint -q /mnt/FortisVault
+ExecStart=%h/dev/Fortis/Fortis-Ecosystem/fortis-backup/fortis-backup.sh
+# Fix #13: Expose the user session's runtime dir so notify-send can reach the
+# D-Bus session bus. Without this, desktop notifications silently fail under systemd.
+Environment=XDG_RUNTIME_DIR=/run/user/%U
+StandardOutput=journal
+StandardError=journal

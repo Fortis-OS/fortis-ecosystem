@@ -1,0 +1,44 @@
+# FortisVault Backup Configuration Example
+# Rename this file to 'backup.conf' and adjust the paths to your environment.
+# IMPORTANT: Set strict permissions after editing — chmod 600 backup.conf
+
+# The root directory where your backups will be stored (e.g., an external HDD mount point).
+BACKUP_ROOT="/mnt/FortisVault"
+
+# Arrays of directories you want to backup.
+# You can use absolute paths or environment variables like $HOME.
+
+# --- Projects ---
+# Backed up daily. Automatically excludes heavy build folders (node_modules, .next, .dist).
+PROJECTS=(
+    "$HOME/Projects/My-Project-1"
+    "$HOME/Projects/My-Project-2"
+)
+
+# --- Secrets ---
+# Backed up daily. Ideal for global configuration files and access keys.
+SECRETS=(
+    "$HOME/.ssh"
+    "$HOME/.aws"
+    "$HOME/.docker/config.json"
+    "$HOME/.config/gh"
+    "$HOME/.npmrc"
+)
+
+# --- Memories ---
+# Backed up weekly (Sundays). Ideal for heavy media files like photos, music, and videos.
+MEMORIES=(
+    "$HOME/Music"
+    "$HOME/Pictures"
+)
+
+# --- Remote Sync (Mobile over Tailscale) ---
+# Optional. If set, FortisVault will push today's snapshot to your mobile device
+# over SSH via your Tailscale network after each backup run.
+# Leave these unset (or commented out) to disable remote sync entirely.
+#
+# Find your Tailscale IP with: tailscale ip -4
+# Pre-add the mobile host key once with:
+#   ssh-keyscan -p $MOBILE_PORT $MOBILE_IP >> ~/.ssh/known_hosts_fortis_mobile
+MOBILE_IP="100.x.x.x"
+MOBILE_PORT="8022"

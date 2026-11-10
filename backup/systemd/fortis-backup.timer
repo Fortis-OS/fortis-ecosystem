@@ -1,0 +1,12 @@
+# /home/ganeshak11/.config/systemd/user/fortis-backup.timer
+[Unit]
+Description=Run Fortis Automated Backup Daily
+
+[Timer]
+# Run at 11:45 PM daily
+OnCalendar=*-*-* 23:45:00
+# If the machine was off at 10 PM, run it as soon as it boots up
+Persistent=true
+
+[Install]
+WantedBy=timers.target
