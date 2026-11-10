@@ -1,0 +1,18 @@
+[package]
+name = "fortis-pam"
+version = "0.2.0"
+edition = "2024"
+description = "pam_fortis: fingerprint-approved sudo via the paired phone (docs/security §4)"
+
+[lib]
+name = "fortis_pam"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fortis-core = { path = "../fortis-core", default-features = false }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
