@@ -28,7 +28,8 @@ import org.json.JSONObject
 @Composable
 fun ControlScreen(
     viewModel: FortisViewModel,
-    onOpenRemoteInput: () -> Unit = {}
+    onOpenRemoteInput: () -> Unit = {},
+    onOpenWebcam: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val activeDevice by viewModel.activeDevice.collectAsState()
@@ -320,6 +321,11 @@ fun ControlScreen(
             FortisActionButton(
                 text = "REMOTE_INPUT_CONTROL",
                 onClick = onOpenRemoteInput
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            FortisActionButton(
+                text = "PHONE_AS_WEBCAM",
+                onClick = onOpenWebcam
             )
         }
 

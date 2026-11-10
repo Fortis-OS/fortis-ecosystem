@@ -1,98 +1,55 @@
 package com.fortis.mobile.network
 
-import android.util.Log
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import com.fortis.mobile.data.Device
+import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
 
-class InputSocketClient(private val client: OkHttpClient, private val hostUrl: String) {
-    private var webSocket: WebSocket? = null
+/**
+ * Remote keyboard/mouse over `GET /api/v1/input?session=<id>` (API §5b).
+ * Needs a confirmed input session (see InputSession). Values are clamped to the
+ * agent's limits (security §7.5) so nothing is silently dropped there.
+ */
+class InputSocketClient(private val laptop: Device, private val sessionId: String, private val onClosed: (String?) -> Unit) {
+    private var ws: WebSocket? = null
 
     fun connect() {
-        // Strip http:// or https:// and replace with ws:// or wss://
-        val wsUrl = hostUrl.replace("http://", "ws://").replace("https://", "wss://") + "/api/v1/input"
-        
-        val request = Request.Builder()
-            .url(wsUrl)
-            .build()
-            
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: okhttp3.Response) {
-                Log.d("InputSocket", "Connected to $wsUrl")
-            }
-            
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: okhttp3.Response?) {
-                Log.e("InputSocket", "Connection failed", t)
-            }
-            
-            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                webSocket.close(1000, null)
-            }
+        val req = FortisApiClient.buildRequest("/api/v1/input?session=$sessionId", laptop) { get() }
+        ws = FortisApiClient.streaming.newWebSocket(req, object : WebSocketListener() {
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = onClosed(null)
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(1000, null) }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) =
+                onClosed(if (response?.code == 401) "Session expired" else (t.message ?: "Connection lost"))
         })
     }
 
-    fun disconnect() {
-        webSocket?.close(1000, "User disconnected")
-        webSocket = null
+    fun disconnect() { main.removeCallbacks(flush); ws?.close(1000, "done"); ws = null }
+
+    private fun send(o: JSONObject) { ws?.send(o.toString()) }
+
+    // Touch moves arrive far faster than the agent's 200 events/s; coalesce to ~50/s.
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private var accX = 0f
+    private var accY = 0f
+    private var flushPending = false
+    private val flush = Runnable {
+        flushPending = false
+        if (accX != 0f || accY != 0f) {
+            send(JSONObject().put("type", "mousemove").put("dx", accX.coerceIn(-2000f, 2000f).toDouble()).put("dy", accY.coerceIn(-2000f, 2000f).toDouble()))
+            accX = 0f; accY = 0f
+        }
     }
 
     fun sendMouseMove(dx: Float, dy: Float) {
-        val json = JSONObject().apply {
-            put("type", "mousemove")
-            put("dx", dx)
-            put("dy", dy)
-        }
-        webSocket?.send(json.toString())
+        accX += dx; accY += dy
+        if (!flushPending) { flushPending = true; main.postDelayed(flush, 20) }
     }
-
-    fun sendClick(button: Int) {
-        val json = JSONObject().apply {
-            put("type", "mouseclick")
-            put("button", button)
-        }
-        webSocket?.send(json.toString())
-    }
-
-    fun sendMouseDown(button: Int) {
-        val json = JSONObject().apply {
-            put("type", "mousedown")
-            put("button", button)
-        }
-        webSocket?.send(json.toString())
-    }
-
-    fun sendMouseUp(button: Int) {
-        val json = JSONObject().apply {
-            put("type", "mouseup")
-            put("button", button)
-        }
-        webSocket?.send(json.toString())
-    }
-
-    fun sendKey(key: String) {
-        val json = JSONObject().apply {
-            put("type", "keydown")
-            put("key", key)
-        }
-        webSocket?.send(json.toString())
-    }
-
-    fun sendScroll(dx: Float, dy: Float) {
-        val json = JSONObject().apply {
-            put("type", "scroll")
-            put("dx", dx)
-            put("dy", dy)
-        }
-        webSocket?.send(json.toString())
-    }
-
-    fun sendText(text: String) {
-        val json = JSONObject().apply {
-            put("type", "type")
-            put("text", text)
-        }
-        webSocket?.send(json.toString())
-    }
+    fun sendClick(button: Int) = send(JSONObject().put("type", "mouseclick").put("button", button.coerceIn(1, 3)))
+    fun sendMouseDown(button: Int) = send(JSONObject().put("type", "mousedown").put("button", button.coerceIn(1, 3)))
+    fun sendMouseUp(button: Int) = send(JSONObject().put("type", "mouseup").put("button", button.coerceIn(1, 3)))
+    fun sendKey(key: String) = send(JSONObject().put("type", "key").put("key", key))
+    fun sendScroll(dx: Float, dy: Float) =
+        send(JSONObject().put("type", "scroll").put("dx", dx.coerceIn(-50f, 50f).toDouble()).put("dy", dy.coerceIn(-50f, 50f).toDouble()))
+    fun sendText(text: String) = text.filter { !it.isISOControl() }.chunked(1000).forEach { send(JSONObject().put("type", "type").put("text", it)) }
 }

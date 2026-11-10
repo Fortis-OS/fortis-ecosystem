@@ -17,6 +17,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import uniffi.fortis_bindings.canonicalApproval
+import uniffi.fortis_bindings.canonicalSession
 import uniffi.fortis_bindings.verifyAgentSignature
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -86,5 +87,12 @@ class SudoInteropTest {
         assertTrue(p.deadlineMillis - System.currentTimeMillis() in 25_000..30_000)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { SudoRequests.cancel(ctx, p.requestId) }
         assertNull(SudoRequests.pending.value[p.requestId])
+    }
+
+    @Test
+    fun inputSessionBytesMatchTheAgent() {
+        val s = fx.getJSONObject("session")
+        val b = canonicalSession(s.getString("session_id"), s.getString("nonce"), s.getLong("issued_at").toULong(), s.getString("kind"))
+        assertEquals(s.getString("hex"), hex(b))
     }
 }

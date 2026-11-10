@@ -60,6 +60,7 @@ fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
     // Full-screen overlay states
     var showNotifApps by remember { mutableStateOf(false) }
     var showRemoteInput by remember { mutableStateOf(false) }
+    var showWebcam by remember { mutableStateOf(false) }
     var showVault by remember { mutableStateOf(false) }
     var showAuthenticator by remember { mutableStateOf(false) }
 
@@ -70,6 +71,11 @@ fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
 
     if (showRemoteInput && activeDevice != null) {
         RemoteInputScreen(device = activeDevice!!, onNavigateBack = { showRemoteInput = false })
+        return
+    }
+
+    if (showWebcam && activeDevice != null) {
+        com.fortis.mobile.webcam.WebcamScreen(device = activeDevice!!, onBack = { showWebcam = false })
         return
     }
 
@@ -139,7 +145,8 @@ fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
                 )
                 1 -> ControlScreen(
                     viewModel = viewModel,
-                    onOpenRemoteInput = { showRemoteInput = true }
+                    onOpenRemoteInput = { showRemoteInput = true },
+                    onOpenWebcam = { showWebcam = true }
                 )
                 2 -> FilesScreen(viewModel = viewModel)
                 3 -> MonitorScreen(viewModel = viewModel)

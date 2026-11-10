@@ -21,6 +21,12 @@ import com.fortis.mobile.data.Device
 import com.fortis.mobile.network.InputSocketClient
 import com.fortis.mobile.ui.components.FortisSpacing
 import kotlinx.coroutines.delay
+import androidx.fragment.app.FragmentActivity
+import com.fortis.mobile.domain.CapabilityManager
+import com.fortis.mobile.network.InputSession
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,9 +41,35 @@ fun RemoteInputScreen(
     var scrollAccY by remember { mutableStateOf(0f) }
 
     var bluetoothManager by remember { mutableStateOf<BluetoothHidManager?>(null) }
-    // Network mode needs a fingerprint-confirmed session (security §5.6); until
-    // that lands, only Bluetooth HID mode is available.
-    val useBluetooth = true
+    // Network mode needs a fingerprint-confirmed session (security §5.6).
+    val networkAvailable = CapabilityManager.hasCapability(device, "input")
+    var useBluetooth by remember { mutableStateOf(!networkAvailable) }
+    var sessionId by remember { mutableStateOf<String?>(null) }
+    var netStatus by remember { mutableStateOf<String?>(null) }
+    var starting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    fun stopNetwork() {
+        socketClient?.disconnect(); socketClient = null
+        sessionId?.let { id -> CoroutineScope(Dispatchers.IO).launch { InputSession.end(device, id) } }
+        sessionId = null
+    }
+
+    fun startNetwork() {
+        val activity = context as? FragmentActivity ?: return
+        starting = true; netStatus = null
+        scope.launch {
+            try {
+                val id = InputSession.start(activity, device)
+                sessionId = id
+                socketClient = InputSocketClient(device, id) { err ->
+                    scope.launch { if (sessionId == id) { socketClient = null; sessionId = null; netStatus = err ?: "Session ended" } }
+                }.also { it.connect() }
+            } catch (e: Exception) {
+                netStatus = e.message
+            } finally { starting = false }
+        }
+    }
 
     DisposableEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -113,10 +145,7 @@ fun RemoteInputScreen(
 
 
     DisposableEffect(device) {
-
-        onDispose {
-            socketClient?.disconnect()
-        }
+        onDispose { stopNetwork() }
     }
 
     Scaffold(
@@ -203,29 +232,42 @@ fun RemoteInputScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
 
-            // Toggle Bluetooth
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // Mode: Bluetooth HID or network (fingerprint session)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Bluetooth keyboard & mouse (network mode needs a fingerprint session — coming next)",
+                    if (useBluetooth) "Mode: Bluetooth keyboard & mouse" else "Mode: network (Tailscale)",
                     modifier = Modifier.weight(1f),
                     fontFamily = FontFamily.Monospace,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Switch(
-                    checked = true,
-                    enabled = false,
-                    onCheckedChange = {},
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.primary,
-                        checkedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    checked = !useBluetooth,
+                    enabled = networkAvailable && !starting,
+                    onCheckedChange = { net -> if (!net) stopNetwork(); useBluetooth = !net; netStatus = null },
                 )
+            }
+            if (!networkAvailable) {
+                Text("Network mode is off on this laptop (input.enabled in agent.toml, xdotool/ydotool).",
+                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (!useBluetooth) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        when {
+                            sessionId != null -> "● Controlling ${device.name} (fingerprint session, max 30 min, ends after 2 min idle)"
+                            starting -> "Waiting for fingerprint…"
+                            else -> netStatus ?: "Not connected"
+                        },
+                        modifier = Modifier.weight(1f),
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (sessionId != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (sessionId == null) Button(onClick = { startNetwork() }, enabled = !starting) { Text("START", fontFamily = FontFamily.Monospace) }
+                    else OutlinedButton(onClick = { stopNetwork(); netStatus = "Stopped" }) { Text("STOP", fontFamily = FontFamily.Monospace) }
+                }
             }
 
             Text(
