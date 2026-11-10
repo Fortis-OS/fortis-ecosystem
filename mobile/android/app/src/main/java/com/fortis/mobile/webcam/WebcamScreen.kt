@@ -55,7 +55,8 @@ fun WebcamScreen(device: Device, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val available = CapabilityManager.hasCapability(device, "webcam")
+    val caps by com.fortis.mobile.domain.rememberFreshCapabilities(device)
+    val available = CapabilityManager.hasCapability(device.copy(capabilitiesJson = caps), "webcam")
     var hasPerm by remember { mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
     val askPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { hasPerm = it }
     var front by remember { mutableStateOf(true) }

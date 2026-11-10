@@ -42,11 +42,14 @@ fun RemoteInputScreen(
 
     var bluetoothManager by remember { mutableStateOf<BluetoothHidManager?>(null) }
     // Network mode needs a fingerprint-confirmed session (security §5.6).
-    val networkAvailable = CapabilityManager.hasCapability(device, "input")
+    // Capabilities change when agent.toml changes; re-read them every time this screen opens.
+    val caps by com.fortis.mobile.domain.rememberFreshCapabilities(device)
+    val networkAvailable = CapabilityManager.hasCapability(device.copy(capabilitiesJson = caps), "input")
     var useBluetooth by remember { mutableStateOf(!networkAvailable) }
     var sessionId by remember { mutableStateOf<String?>(null) }
     var netStatus by remember { mutableStateOf<String?>(null) }
     var starting by remember { mutableStateOf(false) }
+    LaunchedEffect(networkAvailable) { if (networkAvailable && sessionId == null) useBluetooth = false }
     val scope = rememberCoroutineScope()
 
     fun stopNetwork() {
