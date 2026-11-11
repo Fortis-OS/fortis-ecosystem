@@ -1,6 +1,7 @@
 //! Small helpers: running external tools safely, user lookup, PAM trust file.
 
-use std::path::PathBuf;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -15,6 +16,75 @@ pub fn which(cmd: &str) -> Option<PathBuf> {
     })
 }
 
+/// The graphical session's display variables, looked up at call time.
+///
+/// The agent starts at boot, before the desktop exists, so its own
+/// environment normally has neither `WAYLAND_DISPLAY` nor `DISPLAY`. Use its
+/// own value when set, otherwise find the sockets the compositor / X server
+/// create in `$XDG_RUNTIME_DIR` and `/tmp/.X11-unix`.
+pub fn display_env() -> Vec<(&'static str, OsString)> {
+    let own = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty());
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    display_env_in(&own, runtime.as_deref(), Path::new("/tmp/.X11-unix"))
+}
+
+fn display_env_in(
+    own: &dyn Fn(&str) -> Option<OsString>,
+    runtime: Option<&Path>,
+    x11_dir: &Path,
+) -> Vec<(&'static str, OsString)> {
+    use std::os::unix::fs::FileTypeExt;
+    // `prefix<digits>` sockets in `dir`, lowest number first.
+    let sockets = |dir: &Path, prefix: &str| -> Vec<(u32, String)> {
+        let mut v: Vec<(u32, String)> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_socket()))
+            .filter_map(|e| {
+                let name = e.file_name().into_string().ok()?;
+                let n = name.strip_prefix(prefix)?.parse::<u32>().ok()?;
+                Some((n, name))
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    let mut out = Vec::new();
+    let wayland = own("WAYLAND_DISPLAY").or_else(|| {
+        let dir = runtime?;
+        sockets(dir, "wayland-")
+            .into_iter()
+            .next()
+            .map(|(_, n)| n.into())
+    });
+    if let Some(w) = wayland {
+        out.push(("WAYLAND_DISPLAY", w));
+    }
+    let display = own("DISPLAY").or_else(|| {
+        sockets(x11_dir, "X")
+            .into_iter()
+            .next()
+            .map(|(n, _)| format!(":{n}").into())
+    });
+    if let Some(d) = display {
+        out.push(("DISPLAY", d));
+        // KDE/GNOME keep the X cookie in the runtime dir as xauth_*.
+        let xauth = own("XAUTHORITY").or_else(|| {
+            std::fs::read_dir(runtime?)
+                .ok()?
+                .flatten()
+                .filter(|e| e.file_name().to_string_lossy().starts_with("xauth_"))
+                .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
+                .map(|e| e.path().into_os_string())
+        });
+        if let Some(x) = xauth {
+            out.push(("XAUTHORITY", x));
+        }
+    }
+    out
+}
+
 #[derive(Debug)]
 pub struct Output {
     pub status_ok: bool,
@@ -26,6 +96,7 @@ pub struct Output {
 pub async fn run(program: &str, args: &[&str]) -> std::io::Result<Output> {
     let child = Command::new(program)
         .args(args)
+        .envs(display_env())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -46,6 +117,7 @@ pub async fn run(program: &str, args: &[&str]) -> std::io::Result<Output> {
 pub fn spawn_detached(program: &str, args: &[&str]) -> std::io::Result<()> {
     Command::new(program)
         .args(args)
+        .envs(display_env())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -134,6 +206,38 @@ mod tests {
     fn sanitize() {
         assert_eq!(sanitize_display("a<b>&\x07\nc", 100), "a&lt;b&gt;&amp;c");
         assert_eq!(sanitize_display("abcdef", 3), "abc");
+    }
+
+    #[test]
+    fn display_env_found_after_boot() {
+        use std::os::unix::net::UnixListener;
+        let rt = tempfile::tempdir().unwrap();
+        let x11 = tempfile::tempdir().unwrap();
+        let none = |_: &str| None;
+        let get = |v: &[(&str, OsString)], k: &str| {
+            v.iter().find(|(n, _)| *n == k).map(|(_, x)| x.clone())
+        };
+        // Nothing running yet: nothing found.
+        assert!(display_env_in(&none, Some(rt.path()), x11.path()).is_empty());
+        // The desktop has started: its sockets are found; lock files and
+        // plain files with the same names are ignored.
+        let _w1 = UnixListener::bind(rt.path().join("wayland-1")).unwrap();
+        let _w0 = UnixListener::bind(rt.path().join("wayland-0")).unwrap();
+        std::fs::write(rt.path().join("wayland-0.lock"), "").unwrap();
+        std::fs::write(x11.path().join("X5"), "").unwrap();
+        let _x = UnixListener::bind(x11.path().join("X1")).unwrap();
+        std::fs::write(rt.path().join("xauth_abc"), "").unwrap();
+        let v = display_env_in(&none, Some(rt.path()), x11.path());
+        assert_eq!(get(&v, "WAYLAND_DISPLAY"), Some("wayland-0".into()));
+        assert_eq!(get(&v, "DISPLAY"), Some(":1".into()));
+        assert_eq!(
+            get(&v, "XAUTHORITY"),
+            Some(rt.path().join("xauth_abc").into())
+        );
+        // The agent's own values win when set.
+        let own = |k: &str| (k == "WAYLAND_DISPLAY").then(|| OsString::from("wayland-9"));
+        let v = display_env_in(&own, Some(rt.path()), x11.path());
+        assert_eq!(get(&v, "WAYLAND_DISPLAY"), Some("wayland-9".into()));
     }
 
     #[test]

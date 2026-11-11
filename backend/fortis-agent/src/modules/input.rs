@@ -19,9 +19,11 @@ impl Backend {
     }
 }
 
-/// `ydotool` on Wayland, `xdotool` on X11, or nothing.
+/// `ydotool` on Wayland, `xdotool` on X11, or nothing. Checked per call: the
+/// desktop usually starts after the agent.
 pub fn backend() -> Option<Backend> {
-    let set = |v: &str| std::env::var_os(v).is_some_and(|x| !x.is_empty());
+    let env = crate::util::display_env();
+    let set = |v: &str| env.iter().any(|(k, _)| *k == v);
     if set("WAYLAND_DISPLAY") {
         which("ydotool").map(|_| Backend::Ydotool)
     } else if set("DISPLAY") {

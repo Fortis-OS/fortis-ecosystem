@@ -117,7 +117,9 @@ pub async fn telemetry(State(st): State<Shared>) -> axum::Json<Value> {
 // ---- Capabilities ----------------------------------------------------------------
 
 fn on_wayland() -> bool {
-    std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
+    util::display_env()
+        .iter()
+        .any(|(k, _)| *k == "WAYLAND_DISPLAY")
 }
 
 pub fn clipboard_tool() -> Option<&'static str> {
@@ -318,6 +320,7 @@ pub async fn clipboard(ApiJson(b): ApiJson<ClipboardBody>) -> ApiResult<axum::Js
     };
     let mut child = tokio::process::Command::new(tool)
         .args(args)
+        .envs(util::display_env())
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
