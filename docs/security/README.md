@@ -135,8 +135,11 @@ The plaintext is the JSON-serialised `VaultEntry`, including the folder. Titles,
 - The agent **MUST** lock (drop and zeroise key + connection) when:
   - no vault request has arrived for `vault.auto_lock_minutes` (default **15**),
   - `POST /api/v1/vault/lock` or IPC `lock` is received,
-  - the agent receives `SIGTERM`/`SIGINT`.
-- The agent **SHOULD** also lock on the logind `Lock` signal for the user's session.
+  - the agent receives `SIGTERM`/`SIGINT`,
+  - the user's graphical session is locked (`vault.lock_on_screen_lock`, default **on**): the agent
+    reads logind's `LockedHint` for the user's display session every 3 s and locks when it changes
+    from `no` to `yes` (screen lock, lid close, `loginctl lock-session`). It acts only on that change,
+    so a vault unlocked while the screen stays locked is not locked again until the next lock.
 - Vault endpoints return `423 Locked` while locked.
 
 ### 3.6 Login matching (autofill)

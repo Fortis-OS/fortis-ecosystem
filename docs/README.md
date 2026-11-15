@@ -84,6 +84,7 @@ Not part of the ecosystem: `fortis-observe` (separate web-analytics project) and
 | [Development](./development/README.md) | Building, testing, contributing |
 | [Troubleshooting](./troubleshooting/README.md) | Common problems |
 | [Real-Device Test Plan](./testing/README.md) | Step-by-step checks on a real phone + laptop |
+| [Recovery](./recovery/README.md) | Laptop died, phone lost, forgot to back up: what to do |
 
 ## Directory layout
 
@@ -110,22 +111,23 @@ The code is being brought in line with this specification. Status per area (upda
 |---|---|
 | Vault crypto (Argon2id, HKDF, AAD, random salt) | **Done** in `fortis-core` (37 tests) |
 | Agent listeners & auth (loopback/tailnet, token file, signatures) | **Done** — 127.0.0.1 + Tailscale IP only, `agent.token`, Host/Origin checks, signed requests with timestamp + nonce |
-| Auto-lock, unlock back-off | **Done** (logind screen-lock signal not wired yet) |
+| Auto-lock, unlock back-off | **Done** — 15 min idle, and on screen lock (logind `LockedHint`) |
 | Vault CRUD + sync | **Done** — `fortis-core` + all agent vault and sync endpoints |
 | IPC JSON protocol + peer-UID check | **Done** — `$XDG_RUNTIME_DIR/fortis/agent.sock`, root limited to `auth_request` / `pam_devices` |
 | File confinement, action list | **Done** — `/proc`-based telemetry, fixed action list, root-confined files |
 | Pairing + device store | **Done** (agent side) |
-| `pam_fortis` + approvals + events stream | **Done** — module with lockout safeguards, two-stage install, tested through real libpam and the real sudo stack in a sandbox (not yet on real hardware with a phone) |
+| `pam_fortis` + approvals + events stream | **Done** — module with lockout safeguards, two-stage install, tested through real libpam and the real sudo stack in a sandbox, and **verified on real hardware** with the phone |
 | fortis-cli | **Done** — all commands incl. `pair` (QR) and `sudo fortis pam-enroll` |
 | fortis-desktop | **Done** — release build runs against the agent; unlock, entries, 2FA, copy/auto-clear, add/edit/delete, lock checked by hand |
-| Notifications, sessions, remote input, webcam endpoints | **Done** (agent side; tested without real xdotool/ydotool/ffmpeg) |
+| Notifications, sessions, remote input, webcam endpoints | **Done** — remote input (ydotool) and webcam verified on real hardware; the desktop session is found at call time, so they work when the agent starts before the desktop |
 | fortis-mobile app — screens (dashboard, control, files, monitor, widget, camera sync, notifications) | **Done** on the signed v2 API (phase 1) |
 | fortis-mobile app — network remote input + phone webcam (phase 4) | **Done** — fingerprint-confirmed input session (session bytes checked against fortis-core); webcam server checked on the JVM incl. real `ffmpeg` pulling it with the agent's options. Remote input and webcam **verified on real hardware** (KDE Wayland via ydotool; phone camera → `/dev/video10` over Tailscale, wrong-token / second-viewer refused) |
 | fortis-bindings (phone crypto API) | **Done** — key derivation, entry crypto, TOTP, canonical bytes, signature verify |
 | fortis-mobile app — security (per-pairing P-256 keys, signed requests, phone vault, sudo prompts) | Keys, signed requests, pairing, the **phone vault** (sync round-trip verified against fortis-core's push rules) and **sudo prompts done** — events service, full-screen approval, fingerprint-signed answers; frame verification and approval bytes verified against fortis-core on the emulator; **verified on real hardware** (Infinix X6871 + Ubuntu laptop): `pam-test` approve/deny and real `sudo` |
 | fortis-mobile app — terminal screen | **Removed** |
 | fortis-mobile Termux CLI | Done |
-| fortis-backup | Done |
+| fortis-backup | **Done** — vault (`~/.local/share/fortis`) and agent config backed up; items with the same folder name no longer overwrite each other; `backup/verify-restore.sh` restore drill |
+| Health check (`fortis doctor`) and phone-away warning | **Done** — one screen for agent, Tailscale, phone, sudo, input, clipboard, backup, vault backup, browser host; desktop warning after 12 h without the phone |
 | Autofill: shared matching rule (`fortis-core`) | **Done** — `urlmatch` + tests; used by the agent and (via bindings) the phone |
 | Autofill: phone (Android Autofill service, fill + save) | **Done** — matching checked on the emulator; not yet tried on the real phone |
 | Autofill: laptop (fortis-browser extension + host) | **Done** — end-to-end test in a real browser (fill, wrong-site refusal, save new / update / unchanged, lock/unlock) |

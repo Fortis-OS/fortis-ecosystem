@@ -146,6 +146,7 @@ tailnet = true         # also listen on the Tailscale IPv4 address
 
 [vault]
 auto_lock_minutes = 15
+lock_on_screen_lock = true   # lock when the desktop session locks
 
 [auth]
 approval_timeout_secs = 30
@@ -174,7 +175,7 @@ Unknown keys are an error (the agent refuses to start and logs which key).
 ```text
           init (password)                  unlock (password)
 uninitialised ───────────────► unlocked ◄──────────────────── locked
-                                   │  lock / idle timeout / SIGTERM   ▲
+                                   │  lock / idle / screen lock / SIGTERM ▲
                                    └──────────────────────────────────┘
 ```
 
@@ -192,6 +193,8 @@ uninitialised ───────────────► unlocked ◄─�
 | `files` | List / download inside configured roots; receive drops into `~/Downloads/FortisMobileDrop/` |
 | `backup` | Tail of the backup log; trigger a backup run |
 | `devices` | Pairing sessions, paired device store, revocation |
+| `presence` | Desktop warning (once per absence) when a paired phone hasn't connected for 12 h — sudo approvals and phone backups depend on it |
+| `session_lock` | Lock the vault when the desktop session locks (logind `LockedHint`, security §3.5) |
 | `approvals` | Pending sudo requests from IPC, fan-out to phones via events, relay replies back |
 | `notify` | Show mirrored phone notifications with `notify-send` |
 | `sessions` | Create, confirm, expire fingerprint-confirmed sessions; desktop notification while active |

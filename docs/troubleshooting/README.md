@@ -1,6 +1,8 @@
 # Fortis Ecosystem — Troubleshooting
 
-Start with:
+**Start here:** run `fortis doctor`. It checks the agent, Tailscale, the phone connection, fingerprint sudo, remote input, the clipboard, the last backup, whether the vault is in that backup, and the browser host, and says what to do for anything that's wrong.
+
+Then, for more detail:
 
 ```bash
 fortis status
@@ -41,7 +43,7 @@ The token changed (deleted or rotated). Restart fortis-desktop so it re-reads `~
 
 ### `423 vault_locked`
 
-Expected after 15 minutes idle. `fortis unlock`, or unlock in the desktop app. Change `vault.auto_lock_minutes` if needed.
+Expected after 15 minutes idle, or as soon as you lock the screen. `fortis unlock`, or unlock in the desktop app. Change `vault.auto_lock_minutes` or set `vault.lock_on_screen_lock = false` if needed.
 
 ### `429 rate_limited` on unlock
 
