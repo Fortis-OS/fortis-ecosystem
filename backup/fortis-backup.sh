@@ -549,7 +549,8 @@ if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
         if nc -z -w 3 "$MOBILE_IP" "$MOBILE_PORT" 2>/dev/null; then
             # Note: We must use the absolute path because non-interactive SSH does not load ~/.bashrc
             STATUS_JSON=$(ssh "${SSH_OPTS[@]}" "$MOBILE_IP" "bash /data/data/com.termux/files/home/.local/bin/fortis-mobile status --json" 2>&1)
-            if [[ $? -eq 0 ]]; then
+            STATUS_RC=$?
+            if [[ $STATUS_RC -eq 0 ]]; then
                 READY=$(echo "$STATUS_JSON" | jq -r '.ready')
                 if [[ "$READY" == "true" ]]; then
                     REMOTE_AVAILABLE=1
@@ -559,7 +560,15 @@ if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
                     log_mirror "Mobile connected but NOT READY: $REASON. Retrying..."
                 fi
             else
-                log_mirror "Mobile SSH accessible but fortis-mobile CLI failed/not found. Retrying..."
+                # Log the actual error instead of a generic message. ssh exits 255 for its own
+                # failures (auth, host key, corrupted connection); any other code comes from
+                # the fortis-mobile command on the phone.
+                STATUS_ERR=$(echo "$STATUS_JSON" | tail -n 2 | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+                if [[ $STATUS_RC -eq 255 ]]; then
+                    log_mirror "Mobile port open but SSH failed (exit 255): ${STATUS_ERR:-no output}. Retrying..."
+                else
+                    log_mirror "fortis-mobile status failed on phone (exit $STATUS_RC): ${STATUS_ERR:-no output}. Retrying..."
+                fi
             fi
         fi
 
