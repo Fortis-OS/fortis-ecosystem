@@ -55,6 +55,23 @@ MOBILE_PORT=""
 # shellcheck source=backup.conf
 source "$CONFIG_FILE"
 
+# Name an item gets inside the backup: normally its folder name. When two items in the same
+# list share a folder name (e.g. ~/.config/fortis and ~/.local/share/fortis), each uses its
+# path under $HOME instead (".config__fortis", ".local__share__fortis") so neither overwrites
+# the other.
+item_name() {
+    local path="$1"; shift
+    local base other n=0
+    base=$(basename "$path")
+    for other in "$@"; do [[ "$(basename "$other")" == "$base" ]] && n=$((n + 1)); done
+    if (( n > 1 )); then
+        local rel="${path#"$HOME"/}"
+        echo "${rel//\//__}"
+    else
+        echo "$base"
+    fi
+}
+
 if [[ ! -d "$BACKUP_ROOT" ]]; then
     echo "✖ Error: Destination '$BACKUP_ROOT' unavailable (drive not mounted?)"
     exit 4
@@ -108,7 +125,7 @@ if [[ "${1:-}" == "restore" ]]; then
     elif [[ "$RESTORE_TYPE" == "Memories" ]]; then      ARRAY=("${MEMORIES[@]+"${MEMORIES[@]}"}"); fi
 
     for item in "${ARRAY[@]+"${ARRAY[@]}"}"; do
-        if [[ "$(basename "$item")" == "$RESTORE_NAME" ]]; then
+        if [[ "$(item_name "$item" "${ARRAY[@]}")" == "$RESTORE_NAME" ]]; then
             TARGET_PATH="$item"
             break
         fi
@@ -217,7 +234,7 @@ MIRROR_FAILED=0
 # ==========================================
 log_mirror "--- Projects ---"
 for PROJECT in "${PROJECTS[@]+"${PROJECTS[@]}"}"; do
-    PROJECT_NAME=$(basename "$PROJECT")
+    PROJECT_NAME=$(item_name "$PROJECT" "${PROJECTS[@]}")
     if [[ ! -d "$PROJECT" ]]; then
         log_mirror "✖ $PROJECT_NAME (Directory not found)"
         MIRROR_FAILED=1
@@ -252,7 +269,7 @@ done
 
 log_mirror "--- Secrets ---"
 for SECRET in "${SECRETS[@]+"${SECRETS[@]}"}"; do
-    SECRET_NAME=$(basename "$SECRET")
+    SECRET_NAME=$(item_name "$SECRET" "${SECRETS[@]}")
     if [[ ! -e "$SECRET" ]]; then
         log_mirror "✖ $SECRET_NAME (Not found)"
         MIRROR_FAILED=1
@@ -274,7 +291,7 @@ done
 
 log_mirror "--- Memories ---"
 for MEMORY in "${MEMORIES[@]+"${MEMORIES[@]}"}"; do
-    MEMORY_NAME=$(basename "$MEMORY")
+    MEMORY_NAME=$(item_name "$MEMORY" "${MEMORIES[@]}")
     if [[ ! -d "$MEMORY" ]]; then
         log_mirror "✖ $MEMORY_NAME (Not found)"
         MIRROR_FAILED=1
@@ -362,7 +379,7 @@ if [[ ! -d "$DAILY_SNAP_DIR" ]]; then
         log_daily "--- Projects Snapshot ---"
         DAILY_SUCCESS_PROJECTS=0
         for PROJECT in "${PROJECTS[@]+"${PROJECTS[@]}"}"; do
-            PROJECT_NAME=$(basename "$PROJECT")
+            PROJECT_NAME=$(item_name "$PROJECT" "${PROJECTS[@]}")
             if [[ ! -d "$BACKUP_ROOT/Mirror/Projects/$PROJECT_NAME" ]]; then
                 log_daily "✖ $PROJECT_NAME (Mirror source not found)"
                 SNAPSHOT_FAILED=1
@@ -383,7 +400,7 @@ if [[ ! -d "$DAILY_SNAP_DIR" ]]; then
         log_daily "--- Secrets Snapshot ---"
         DAILY_SUCCESS_SECRETS=0
         for SECRET in "${SECRETS[@]+"${SECRETS[@]}"}"; do
-            SECRET_NAME=$(basename "$SECRET")
+            SECRET_NAME=$(item_name "$SECRET" "${SECRETS[@]}")
             if [[ ! -e "$BACKUP_ROOT/Mirror/Secrets/$SECRET_NAME" ]]; then
                 log_daily "✖ $SECRET_NAME (Mirror source not found)"
                 SNAPSHOT_FAILED=1
@@ -451,7 +468,7 @@ if [[ "$DAY_OF_WEEK" -eq 7 ]]; then
         WEEKLY_SUCCESS=0
         WEEKLY_EXPECTED=${#MEMORIES[@]}
         for MEMORY in "${MEMORIES[@]+"${MEMORIES[@]}"}"; do
-            MEMORY_NAME=$(basename "$MEMORY")
+            MEMORY_NAME=$(item_name "$MEMORY" "${MEMORIES[@]}")
             rsync -a "${LINK_DEST_ARGS_W[@]+"${LINK_DEST_ARGS_W[@]}"}" \
                 "$BACKUP_ROOT/Mirror/Memories/$MEMORY_NAME" \
                 "$WEEKLY_SNAP_DIR/Memories/" 2>>"$WEEKLY_LOG"

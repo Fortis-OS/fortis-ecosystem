@@ -19,6 +19,8 @@ PROJECTS=(
 # Backed up daily. Ideal for global configuration files and access keys.
 SECRETS=(
     "$HOME/.ssh"
+    "$HOME/.local/share/fortis"     # Fortis vault (encrypted) + vault.meta.json (salt, needed to unlock)
+    "$HOME/.config/fortis"          # agent key, paired devices, agent.toml
     "$HOME/.aws"
     "$HOME/.docker/config.json"
     "$HOME/.config/gh"
