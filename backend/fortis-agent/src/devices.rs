@@ -46,6 +46,9 @@ struct DeviceFile {
     devices: Vec<Device>,
 }
 
+/// Minimum time between disk writes of a device's `last_seen`.
+const SEEN_PERSIST_SECS: i64 = 600;
+
 pub struct DeviceStore {
     path: PathBuf,
     devices: Mutex<Vec<Device>>,
@@ -109,10 +112,17 @@ impl DeviceStore {
         Ok(true)
     }
 
-    /// In-memory only; persisted with the next add/remove.
+    /// Record that a device was seen. Written to disk at most once per
+    /// `SEEN_PERSIST_SECS` per device, so "last seen" survives agent restarts.
     pub fn touch(&self, id: &Uuid, now: i64) {
-        if let Some(d) = self.lock().iter_mut().find(|d| d.device_id == *id) {
-            d.last_seen = now;
+        let mut g = self.lock();
+        let Some(d) = g.iter_mut().find(|d| d.device_id == *id) else {
+            return;
+        };
+        let persist = now - d.last_seen >= SEEN_PERSIST_SECS;
+        d.last_seen = now;
+        if persist && let Err(e) = self.save(&g) {
+            log::warn!("could not save device last_seen: {e}");
         }
     }
 }
@@ -248,5 +258,37 @@ mod tests {
         );
         assert!(s.remove(&d.device_id).unwrap());
         assert!(DeviceStore::load(p).unwrap().list().is_empty());
+    }
+
+    #[test]
+    fn last_seen_reaches_disk_at_most_every_10_min() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("paired_devices.json");
+        let s = DeviceStore::load(p.clone()).unwrap();
+        let id = Uuid::new_v4();
+        s.add(Device {
+            device_id: id,
+            name: "Pixel".into(),
+            request_pubkey: "a".into(),
+            approval_pubkey: "b".into(),
+            paired_at: 1,
+            last_seen: 1_000,
+        })
+        .unwrap();
+        let on_disk = || {
+            DeviceStore::load(p.clone())
+                .unwrap()
+                .get(&id)
+                .unwrap()
+                .last_seen
+        };
+        s.touch(&id, 1_000 + SEEN_PERSIST_SECS); // 10 min later: written
+        assert_eq!(on_disk(), 1_000 + SEEN_PERSIST_SECS);
+        s.touch(&id, 1_000 + SEEN_PERSIST_SECS + 60); // 1 min after that: memory only
+        assert_eq!(on_disk(), 1_000 + SEEN_PERSIST_SECS);
+        assert_eq!(
+            s.get(&id).unwrap().last_seen,
+            1_000 + SEEN_PERSIST_SECS + 60
+        );
     }
 }

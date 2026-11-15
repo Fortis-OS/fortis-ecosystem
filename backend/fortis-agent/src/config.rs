@@ -31,6 +31,8 @@ pub struct RestConfig {
 #[serde(deny_unknown_fields, default)]
 pub struct VaultConfig {
     pub auto_lock_minutes: u64,
+    /// Lock when the user's desktop session locks (security §3.5).
+    pub lock_on_screen_lock: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -80,6 +82,7 @@ impl Default for VaultConfig {
     fn default() -> Self {
         Self {
             auto_lock_minutes: 15,
+            lock_on_screen_lock: true,
         }
     }
 }

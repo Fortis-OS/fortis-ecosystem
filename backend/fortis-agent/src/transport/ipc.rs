@@ -187,6 +187,7 @@ async fn dispatch(
             "active_sessions": st.sessions.active().len(),
             "agent_fingerprint": st.agent_key.public().fingerprint(),
         })),
+        "capabilities" => Ok(crate::modules::system::capabilities_json(st)),
         "init" => {
             st.init(Zeroizing::new(arg_str(a, "password")?.to_string()))
                 .await?;

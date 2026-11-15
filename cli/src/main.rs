@@ -13,6 +13,7 @@ use fortis_core::password_gen::{self, PasswordOptions};
 use fortis_core::vault::{EntryInput, VaultEntry};
 
 mod clipboard;
+mod doctor;
 mod entries;
 mod ipc;
 mod pam;
@@ -39,6 +40,8 @@ struct Cli {
 enum Command {
     /// Agent and vault status
     Status,
+    /// Check every part of Fortis and say what to fix
+    Doctor,
     /// Create a new vault
     Init {
         /// Read the password from stdin instead of prompting
@@ -330,6 +333,7 @@ fn run(cli: Cli) -> Res<()> {
         Command::PamEnroll { yes } => return pam::run(yes),
         Command::PamInstall { sudo, yes } => return pam_install::run_install(sudo, yes),
         Command::PamTest => return pam_install::run_test(),
+        Command::Doctor => return doctor::run(),
         Command::PamUninstall => return pam_install::run_uninstall(),
         Command::Generate {
             length,
@@ -554,6 +558,7 @@ fn run(cli: Cli) -> Res<()> {
         Command::PamEnroll { .. }
         | Command::PamInstall { .. }
         | Command::PamTest
+        | Command::Doctor
         | Command::PamUninstall
         | Command::Generate { .. }
         | Command::ClearClipboard { .. } => {

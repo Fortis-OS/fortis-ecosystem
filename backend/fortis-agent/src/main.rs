@@ -107,6 +107,10 @@ async fn run() -> Result<(), String> {
             st_lock.auto_lock_tick();
         }
     });
+    if st.config.vault.lock_on_screen_lock {
+        tokio::spawn(modules::session_lock::watch(st.clone()));
+    }
+    tokio::spawn(modules::presence::watch(st.clone()));
 
     tokio::select! {
         _ = shutdown_signal() => log::info!("shutting down"),
