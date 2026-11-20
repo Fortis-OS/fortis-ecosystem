@@ -8,6 +8,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.fillMaxSize
+import com.fortis.mobile.ui.components.ErrorLine
+import com.fortis.mobile.ui.components.FortisActionButton
+import com.fortis.mobile.ui.components.FortisCaption
+import com.fortis.mobile.ui.components.FortisCard
+import com.fortis.mobile.ui.theme.Frost
+import com.fortis.mobile.ui.theme.FrostMono
+import com.fortis.mobile.ui.theme.FrostSans
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.fortis.mobile.ui.theme.FortisMobileTheme
@@ -36,22 +45,35 @@ class AutofillSaveActivity : FragmentActivity() {
                 var status by remember { mutableStateOf<String?>(null) }
                 var busy by remember { mutableStateOf(false) }
                 com.fortis.mobile.ui.components.FrostBackground {
-                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Save to Fortis?", style = MaterialTheme.typography.headlineSmall)
-                        Text("Site/app: $where")
-                        Text("Username: ${s.username.ifEmpty { "(none)" }}")
-                        Text("Password: ${"•".repeat(s.password.length.coerceAtMost(12))}")
-                        status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                    Column(
+                        Modifier.fillMaxSize().padding(24.dp),
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text("Save to Fortis?", fontFamily = FrostSans, fontSize = 28.sp, color = Frost.text)
+                        Spacer(Modifier.height(16.dp))
+                        FortisCard {
+                            FortisCaption("Site or app")
+                            Text(where, fontFamily = FrostMono, fontSize = 15.sp, color = Frost.text, modifier = Modifier.padding(bottom = 10.dp))
+                            FortisCaption("Username")
+                            Text(s.username.ifEmpty { "(none)" }, fontFamily = FrostMono, fontSize = 15.sp, color = Frost.text, modifier = Modifier.padding(bottom = 10.dp))
+                            FortisCaption("Password")
+                            Text("•".repeat(s.password.length.coerceAtMost(12)), fontFamily = FrostMono, fontSize = 15.sp, color = Frost.text)
+                        }
+                        status?.let {
+                            if (it.startsWith("Couldn't")) ErrorLine(it, Modifier.padding(top = 10.dp))
+                            else Text(it, fontFamily = FrostSans, color = Frost.ok, modifier = Modifier.padding(top = 10.dp))
+                        }
+                        Spacer(Modifier.height(20.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedButton(onClick = { finish() }, enabled = !busy) { Text("Not now") }
-                            Button(enabled = !busy, onClick = {
+                            FortisActionButton(text = "Not now", onClick = { finish() }, enabled = !busy, modifier = Modifier.weight(1f))
+                            FortisActionButton(text = "Save", isPrimary = true, isLoading = busy, enabled = !busy, modifier = Modifier.weight(1f), onClick = {
                                 busy = true
                                 lifecycleScope.launch {
                                     if (UserAuth.authenticate(this@AutofillSaveActivity, "Save to Fortis", where) != null) { busy = false; return@launch }
                                     status = withContext(Dispatchers.IO) { runCatching { save(s, url) }.getOrElse { "Couldn't save: ${it.message}" } }
                                     delay(1200); finish()
                                 }
-                            }) { Text("Save") }
+                            })
                         }
                     }
                 }

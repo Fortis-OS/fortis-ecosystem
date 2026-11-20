@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -27,6 +28,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.fortis.mobile.service.EventsService
 import com.fortis.mobile.ui.components.FortisSpacing
 import com.fortis.mobile.ui.theme.FrostMono
+import com.fortis.mobile.ui.theme.FrostSans
+import com.fortis.mobile.ui.theme.Frost
+import com.fortis.mobile.ui.components.*
 
 /** Sudo approvals on/off plus the phone settings they need (docs/deployment §5). */
 @Composable
@@ -43,20 +47,15 @@ fun SudoSettingsCard() {
     }
     val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { checks = Checks.read(ctx) }
 
-    Card(
-        Modifier.fillMaxWidth().padding(bottom = 16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        shape = RoundedCornerShape(FortisSpacing.cardCorner),
-    ) {
-        Column(Modifier.padding(FortisSpacing.cardPadding)) {
+    FortisCard(Modifier.fillMaxWidth()) {
+        Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Sudo approvals", style = MaterialTheme.typography.titleMedium, fontFamily = FrostMono)
+                    Text("Fingerprint sudo", fontFamily = FrostSans, fontSize = 17.sp, color = Frost.text)
                     Text(if (!enabled) "Off — laptops ask for the password" else "Connected to ${online.size} laptop(s)",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        fontFamily = FrostSans, fontSize = 12.sp, color = Frost.muted)
                 }
-                Switch(checked = enabled, onCheckedChange = {
+                Switch(checked = enabled, colors = frostSwitchColors(), onCheckedChange = {
                     enabled = it
                     EventsService.setEnabled(ctx, it)
                     if (it && !checks.notifications && Build.VERSION.SDK_INT >= 33) notifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -81,8 +80,8 @@ fun SudoSettingsCard() {
 @Composable
 private fun Fix(text: String, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("⚠ $text", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = { runCatching(onClick) }) { Text("FIX", fontFamily = FrostMono) }
+        ErrorLine(text, Modifier.weight(1f))
+        TextButton(onClick = { runCatching(onClick) }) { Text("Fix", fontFamily = FrostSans, color = Frost.accent) }
     }
 }
 

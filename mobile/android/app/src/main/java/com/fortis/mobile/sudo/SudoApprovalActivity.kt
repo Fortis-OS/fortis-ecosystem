@@ -9,6 +9,23 @@ import androidx.activity.compose.setContent
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.unit.sp
+import com.fortis.mobile.ui.components.ErrorLine
+import com.fortis.mobile.ui.components.FortisActionButton
+import com.fortis.mobile.ui.components.FortisCaption
+import com.fortis.mobile.ui.components.FortisCard
+import com.fortis.mobile.ui.components.FrostBackground
+import com.fortis.mobile.ui.components.pressable
+import com.fortis.mobile.ui.theme.Frost
+import com.fortis.mobile.ui.theme.FrostMono
+import com.fortis.mobile.ui.theme.FrostSans
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,14 +33,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -82,43 +94,63 @@ class SudoApprovalActivity : FragmentActivity() {
         LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(250) } }
         LaunchedEffect(p == null, status) { if (p == null && status == null) { delay(300); finish() } }
 
-        com.fortis.mobile.ui.components.FrostBackground {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        FrostBackground {
+            Column(
+                Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 if (p == null) {
-                    Text(status ?: "This request is no longer waiting.", style = MaterialTheme.typography.titleMedium)
+                    Text(status ?: "This request is no longer waiting.", fontFamily = FrostSans, fontSize = 18.sp, color = Frost.text)
                     Spacer(Modifier.height(16.dp))
-                    TextButton(onClick = { finish() }) { Text("Close") }
+                    FortisActionButton(text = "Close", onClick = { finish() })
                     return@Column
                 }
-                Text("Approve sudo?", style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(16.dp))
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row2("User", p.user)
-                        Row2("Laptop", if (p.host == p.laptopName) p.host else "${p.host} (paired as ${p.laptopName})")
-                        Row2("Service", p.service)
-                        Row2("Terminal", p.tty)
-                    }
-                }
+                Icon(Icons.Default.Fingerprint, null, tint = Frost.accent, modifier = Modifier.size(48.dp))
                 Spacer(Modifier.height(12.dp))
-                val left = ((p.deadlineMillis - now) / 1000).coerceAtLeast(0)
-                Text("Expires in ${left}s · only approve if you just ran sudo", style = MaterialTheme.typography.bodySmall)
-                status?.let { Spacer(Modifier.height(8.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+                Text("Approve sudo?", fontFamily = FrostSans, fontSize = 30.sp, color = Frost.text)
+                Text(p.laptopName, fontFamily = FrostSans, fontSize = 15.sp, color = Frost.muted)
+                Spacer(Modifier.height(20.dp))
+                FortisCard {
+                    Row2("User", p.user)
+                    Row2("Laptop", if (p.host == p.laptopName) p.host else "${p.host} (paired as ${p.laptopName})")
+                    Row2("Service", p.service)
+                    Row2("Terminal", p.tty)
+                    val total = remember(p.requestId) { ((p.deadlineMillis - System.currentTimeMillis()) / 1000).coerceAtLeast(1) }
+                    val left = ((p.deadlineMillis - now) / 1000).coerceAtLeast(0)
+                    Spacer(Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { left.toFloat() / total },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = if (left <= 10) Frost.warn else Frost.subtle,
+                        trackColor = Frost.faint,
+                        drawStopIndicator = {},
+                    )
+                    Text(
+                        "Expires in ${left}s · only approve if you just ran sudo",
+                        fontFamily = FrostSans, fontSize = 12.sp, color = if (left <= 10) Frost.warn else Frost.muted,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                status?.let { ErrorLine(it, Modifier.padding(top = 10.dp)) }
                 Spacer(Modifier.height(24.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(onClick = { answer(p, "deny") }, enabled = !busy, modifier = Modifier.weight(1f)) { Text("Deny") }
-                    Button(onClick = { answer(p, "approve") }, enabled = !busy, modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors()) { Text("Approve") }
+                    FortisActionButton(text = "Deny", onClick = { answer(p, "deny") }, enabled = !busy, modifier = Modifier.weight(1f))
+                    FortisActionButton(text = "Approve", isPrimary = true, isLoading = busy, onClick = { answer(p, "approve") }, enabled = !busy, modifier = Modifier.weight(1f))
                 }
-                TextButton(onClick = { finish() }, enabled = !busy) { Text("Ignore (use password)") }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Ignore (use the password)", fontFamily = FrostSans, fontSize = 14.sp, color = Frost.muted,
+                    modifier = Modifier.padding(8.dp).pressable(enabled = !busy) { finish() },
+                )
             }
         }
     }
 
     @Composable
-    private fun Row2(k: String, v: String) = Row(Modifier.fillMaxWidth()) {
-        Text(k, Modifier.weight(0.35f), style = MaterialTheme.typography.labelLarge)
-        Text(v, Modifier.weight(0.65f))
+    private fun Row2(k: String, v: String) = Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+        FortisCaption(k, Modifier.weight(0.32f).padding(top = 2.dp))
+        Text(v, Modifier.weight(0.68f), fontFamily = FrostMono, fontSize = 14.sp, color = Frost.text)
     }
 
     private fun answer(p: PendingSudo, decision: String) {

@@ -15,6 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.fortis.mobile.R
@@ -39,9 +43,26 @@ class AutofillAuthActivity : FragmentActivity() {
         setContent {
             FortisMobileTheme {
                 com.fortis.mobile.ui.components.FrostBackground {
-                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(message ?: "Unlocking Fortis for $where…", style = MaterialTheme.typography.titleMedium)
-                        if (message != null) { Spacer(Modifier.height(16.dp)); TextButton(onClick = { finish() }) { Text("Close") } }
+                    Column(
+                        Modifier.fillMaxSize().padding(24.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        androidx.compose.material3.Icon(
+                            androidx.compose.material.icons.Icons.Default.Key, null,
+                            tint = com.fortis.mobile.ui.theme.Frost.muted, modifier = Modifier.size(40.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text("Fortis autofill", fontFamily = com.fortis.mobile.ui.theme.FrostSans, fontSize = 22.sp, color = com.fortis.mobile.ui.theme.Frost.text)
+                        Text(where, fontFamily = com.fortis.mobile.ui.theme.FrostMono, fontSize = 13.sp, color = com.fortis.mobile.ui.theme.Frost.muted)
+                        Spacer(Modifier.height(16.dp))
+                        if (message == null) {
+                            Text("Unlocking…", fontFamily = com.fortis.mobile.ui.theme.FrostSans, color = com.fortis.mobile.ui.theme.Frost.muted)
+                        } else {
+                            com.fortis.mobile.ui.components.ErrorLine(message!!)
+                            Spacer(Modifier.height(16.dp))
+                            com.fortis.mobile.ui.components.FortisActionButton(text = "Close", onClick = { finish() })
+                        }
                     }
                 }
             }

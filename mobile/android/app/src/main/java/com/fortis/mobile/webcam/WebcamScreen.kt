@@ -32,6 +32,14 @@ import com.fortis.mobile.R
 import com.fortis.mobile.data.Device
 import com.fortis.mobile.domain.CapabilityManager
 import com.fortis.mobile.network.FortisApiClient
+import com.fortis.mobile.ui.components.FortisActionButton
+import com.fortis.mobile.ui.components.FrostTopBar
+import com.fortis.mobile.ui.components.StatusDot
+import com.fortis.mobile.ui.components.frostGlass
+import com.fortis.mobile.ui.theme.Frost
+import com.fortis.mobile.ui.theme.FrostSans
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.Alignment
 import com.fortis.mobile.ui.components.FortisSpacing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -147,36 +155,35 @@ fun WebcamScreen(device: Device, onBack: () -> Unit) {
         }
     }
 
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text("WEBCAM — ${device.name}", fontFamily = FrostMono, style = MaterialTheme.typography.titleMedium) },
-            navigationIcon = { TextButton(onClick = onBack) { Text("< BACK", fontFamily = FrostMono) } },
-        )
-    }) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).padding(FortisSpacing.screenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            when {
-                !available -> Text("Webcam is off on this laptop. Set webcam.enabled = true in agent.toml and load v4l2loopback (see docs/installation).",
-                    fontFamily = FrostMono, style = MaterialTheme.typography.bodyMedium)
-                !hasPerm -> Button(onClick = { askPerm.launch(Manifest.permission.CAMERA) }) { Text("ALLOW CAMERA", fontFamily = FrostMono) }
-                else -> {
-                    AndroidView({ previewView }, Modifier.fillMaxWidth().weight(1f))
-                    val s = server
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        FrostTopBar("Webcam", onBack = onBack)
+        when {
+            !available -> Text("Webcam is off on this laptop. Set webcam.enabled = true in agent.toml and load v4l2loopback (see docs/installation).",
+                fontFamily = FrostSans, color = Frost.muted)
+            !hasPerm -> FortisActionButton(text = "Allow camera", isPrimary = true, onClick = { askPerm.launch(Manifest.permission.CAMERA) })
+            else -> {
+                AndroidView({ previewView }, Modifier.fillMaxWidth().weight(1f).frostGlass(radius = 20.dp))
+                val s = server
+                val streaming = s != null && startedAt != 0L && s.clientConnected
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusDot(if (streaming) true else null)
+                    Spacer(Modifier.width(10.dp))
                     Text(
                         when {
                             s == null -> status ?: "Not streaming"
                             startedAt == 0L -> status ?: "Starting…"
                             else -> {
                                 val left = ((MAX_STREAM_MS - (now - startedAt)) / 60000).coerceAtLeast(0)
-                                (if (s.clientConnected) "● Streaming to ${device.name}" else "Waiting for ${device.name}…") + " · stops in ${left} min"
+                                (if (s.clientConnected) "Streaming to ${device.name}" else "Waiting for ${device.name}…") + " · stops in ${left} min"
                             }
                         },
-                        fontFamily = FrostMono, style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FrostSans, fontSize = 13.sp, color = if (streaming) Frost.text else Frost.muted,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (s == null) Button(onClick = { start() }, Modifier.weight(1f)) { Text("START", fontFamily = FrostMono) }
-                        else OutlinedButton(onClick = { stop("Stopped") }, Modifier.weight(1f)) { Text("STOP", fontFamily = FrostMono) }
-                        OutlinedButton(onClick = { front = !front }, Modifier.weight(1f)) { Text(if (front) "BACK CAM" else "FRONT CAM", fontFamily = FrostMono) }
-                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (s == null) FortisActionButton(text = "Start", isPrimary = true, onClick = { start() }, modifier = Modifier.weight(1f))
+                    else FortisActionButton(text = "Stop", onClick = { stop("Stopped") }, modifier = Modifier.weight(1f))
+                    FortisActionButton(text = if (front) "Back camera" else "Front camera", onClick = { front = !front }, modifier = Modifier.weight(1f))
                 }
             }
         }

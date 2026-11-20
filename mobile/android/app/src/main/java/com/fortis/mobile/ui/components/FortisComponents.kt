@@ -390,7 +390,8 @@ fun FortisCompactActionButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    isPrimary: Boolean = false,
 ) {
     val source = remember { MutableInteractionSource() }
     val scale = pressScale(source)
@@ -402,13 +403,13 @@ fun FortisCompactActionButton(
         enabled = enabled,
         shape = RoundedCornerShape(FortisSpacing.buttonCorner),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Color.White.copy(alpha = 0.05f),
-            contentColor = Frost.text,
+            containerColor = if (isPrimary) Frost.accent else Color.White.copy(alpha = 0.05f),
+            contentColor = if (isPrimary) Frost.textOnAccent else Frost.text,
             disabledContainerColor = Color.White.copy(alpha = 0.02f),
             disabledContentColor = Frost.text.copy(alpha = 0.4f)
         ),
-        border = BorderStroke(1.dp, if (enabled) Frost.faint else Frost.faint.copy(alpha = 0.03f)),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        border = if (isPrimary) null else BorderStroke(1.dp, if (enabled) Frost.faint else Frost.faint.copy(alpha = 0.03f)),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         interactionSource = source,
     ) {
         Text(

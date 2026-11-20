@@ -23,7 +23,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -169,3 +171,98 @@ fun QuickAction(icon: ImageVector, label: String, modifier: Modifier = Modifier,
         Text(label, fontFamily = FrostSans, fontSize = 12.sp, color = if (enabled) Frost.muted else Frost.subtle, maxLines = 1)
     }
 }
+
+/** Screen title with an optional back arrow and trailing actions (Rufscript, like Frost's headers). */
+@Composable
+fun FrostTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (onBack != null) {
+            androidx.compose.material3.IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Frost.text)
+            }
+        }
+        Text(
+            title, fontFamily = FrostSans, fontSize = 24.sp, color = Frost.text, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = if (onBack == null) 4.dp else 0.dp),
+        )
+        actions()
+    }
+}
+
+/** A failure: Frost error colour, a warning icon and the message (never mistaken for a red button). */
+@Composable
+fun ErrorLine(message: String, modifier: Modifier = Modifier) {
+    Row(modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
+        Icon(Icons.Default.WarningAmber, contentDescription = "Error", tint = Frost.error, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(message, fontFamily = FrostSans, fontSize = 14.sp, color = Frost.error)
+    }
+}
+
+/** Frost text-field colours: a dark well, light border, red edge and cursor when focused. */
+@Composable
+fun frostFieldColors() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Frost.text,
+    unfocusedTextColor = Frost.text,
+    focusedContainerColor = Frost.well,
+    unfocusedContainerColor = Frost.well,
+    focusedBorderColor = Frost.accent,
+    unfocusedBorderColor = Frost.border,
+    focusedLabelColor = Frost.accent,
+    unfocusedLabelColor = Frost.muted,
+    cursorColor = Frost.accent,
+    focusedTrailingIconColor = Frost.muted,
+    unfocusedTrailingIconColor = Frost.muted,
+    focusedLeadingIconColor = Frost.muted,
+    unfocusedLeadingIconColor = Frost.muted,
+    focusedPlaceholderColor = Frost.subtle,
+    unfocusedPlaceholderColor = Frost.subtle,
+)
+
+/**
+ * Frost text field. [mono] for secrets, codes, keys and addresses (FrostMono); otherwise Rufscript.
+ * Everything else is OutlinedTextField's own parameters.
+ */
+@Composable
+fun FrostField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    mono: Boolean = false,
+    singleLine: Boolean = true,
+    placeholder: String? = null,
+    visualTransformation: androidx.compose.ui.text.input.VisualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
+    keyboardOptions: androidx.compose.foundation.text.KeyboardOptions = androidx.compose.foundation.text.KeyboardOptions.Default,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
+) = androidx.compose.material3.OutlinedTextField(
+    value = value,
+    onValueChange = onValueChange,
+    modifier = modifier.fillMaxWidth(),
+    label = if (label.isEmpty()) null else ({ Text(label, fontFamily = FrostSans) }),
+    placeholder = placeholder?.let { { Text(it, fontFamily = FrostSans) } },
+    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = if (mono) FrostMono else FrostSans, fontSize = 15.sp, color = Frost.text),
+    singleLine = singleLine,
+    visualTransformation = visualTransformation,
+    keyboardOptions = keyboardOptions,
+    leadingIcon = leadingIcon,
+    trailingIcon = trailingIcon,
+    shape = RoundedCornerShape(14.dp),
+    colors = frostFieldColors(),
+)
+
+/** On/off chip for options (the password generator's character sets). */
+@Composable
+fun FrostToggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) = FrostChip(label, on) { onChange(!on) }
+
+/** Frost switch: red track when on, faint when off. */
+@Composable
+fun frostSwitchColors() = androidx.compose.material3.SwitchDefaults.colors(
+    checkedThumbColor = Frost.textOnAccent,
+    checkedTrackColor = Frost.accent,
+    checkedBorderColor = Frost.accent,
+    uncheckedThumbColor = Frost.muted,
+    uncheckedTrackColor = Frost.faint,
+    uncheckedBorderColor = Frost.border,
+)

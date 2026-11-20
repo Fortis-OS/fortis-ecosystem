@@ -27,8 +27,6 @@ import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.fortis.mobile.ui.FortisViewModel
 import com.fortis.mobile.ui.components.*
-import com.fortis.mobile.ui.theme.StatusGreen
-import com.fortis.mobile.ui.theme.StatusRed
 import com.fortis.mobile.vault.SecretClipboard
 import com.fortis.mobile.vault.UserAuth
 import com.fortis.mobile.vault.VaultError
@@ -44,6 +42,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import com.fortis.mobile.ui.theme.FrostMono
+import com.fortis.mobile.ui.theme.FrostSans
+import com.fortis.mobile.ui.theme.Frost
 
 // ---------------------------------------------------------------- shared
 
@@ -58,14 +58,8 @@ private fun SecureWindow() {
 }
 
 @Composable
-private fun Title(text: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-        if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onBackground) }
-        Text(text, style = MaterialTheme.typography.headlineMedium, fontFamily = FrostMono,
-            color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
-        actions()
-    }
-}
+private fun Title(text: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) =
+    FrostTopBar(text, onBack, actions)
 
 @Composable
 private fun Screen(content: @Composable ColumnScope.() -> Unit) =
@@ -91,7 +85,7 @@ private fun VaultGate(title: String, onBack: (() -> Unit)?, unlocked: @Composabl
         VaultRepository.State.NoVaultLaptop -> Screen {
             Title(title, onBack)
             Text("Pick the laptop that holds your vault: in Settings → Laptops, tap \"Use for vault sync\" under it (or pair one first).",
-                fontFamily = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                fontFamily = FrostSans, color = Frost.muted)
         }
         VaultRepository.State.NotSetUp -> SetupScreen(title, repo, onBack) { state = repo.state() }
         VaultRepository.State.Locked -> UnlockScreen(title, repo, onBack) { state = repo.state() }
@@ -111,12 +105,12 @@ private fun SetupScreen(title: String, repo: VaultRepository, onBack: (() -> Uni
         Text("One-time setup. Enter the master password of the vault on ${laptop?.name ?: "your laptop"}. " +
             "It's used once on this phone to open your vault key, then forgotten — after this you unlock with your fingerprint.\n\n" +
             "The laptop vault must be unlocked (fortis unlock).",
-            fontFamily = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
-        OutlinedTextField(password, { password = it }, label = { Text("Master password", fontFamily = mono()) }, singleLine = true,
+            fontFamily = FrostSans, color = Frost.muted, modifier = Modifier.padding(bottom = 16.dp))
+        FrostField(password, { password = it }, "Master password", mono = true,
             visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
-        error?.let { Text(it, color = StatusRed, fontFamily = mono(), modifier = Modifier.padding(bottom = 8.dp)) }
-        FortisActionButton(text = if (busy) "CHECKING…" else "SET UP", isPrimary = true, isLoading = busy, enabled = password.isNotEmpty(), onClick = {
+            modifier = Modifier.padding(bottom = 12.dp))
+        error?.let { ErrorLine(it) }
+        FortisActionButton(text = if (busy) "Checking…" else "Set up", isPrimary = true, isLoading = busy, enabled = password.isNotEmpty(), onClick = {
             busy = true; error = null
             scope.launch {
                 val chars = password.toCharArray(); password = ""
@@ -156,9 +150,9 @@ private fun UnlockScreen(title: String, repo: VaultRepository, onBack: (() -> Un
     LaunchedEffect(Unit) { unlock() }
     Screen {
         Title(title, onBack)
-        Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp).align(Alignment.CenterHorizontally).padding(bottom = 16.dp))
-        error?.let { Text(it, color = StatusRed, fontFamily = mono(), modifier = Modifier.padding(bottom = 12.dp)) }
-        FortisActionButton(text = "UNLOCK", isPrimary = true, onClick = unlock)
+        Icon(Icons.Default.Lock, null, tint = Frost.muted, modifier = Modifier.size(48.dp).align(Alignment.CenterHorizontally).padding(bottom = 16.dp))
+        error?.let { ErrorLine(it) }
+        FortisActionButton(text = "Unlock", isPrimary = true, onClick = unlock)
     }
 }
 
@@ -175,7 +169,7 @@ private suspend fun <T> vaultCall(onError: (String) -> Unit, block: () -> T): T?
 
 @Composable
 fun VaultScreen(viewModel: FortisViewModel, onBack: (() -> Unit)? = null) {
-    VaultGate("VAULT", onBack) { VaultHome(onBack) }
+    VaultGate("Vault", onBack) { VaultHome(onBack) }
 }
 
 @Composable
@@ -223,29 +217,27 @@ private fun VaultHome(onBack: (() -> Unit)?) {
             .any { it.contains(query, ignoreCase = true) }
     }
     Screen {
-        Title("VAULT", onBack) {
-            IconButton(onClick = { sync() }) { Icon(Icons.Default.Sync, "Sync", tint = MaterialTheme.colorScheme.onBackground) }
-            IconButton(onClick = { repo.lock() }) { Icon(Icons.Default.Lock, "Lock", tint = MaterialTheme.colorScheme.onBackground) }
+        Title("Vault", onBack) {
+            IconButton(onClick = { sync() }) { Icon(Icons.Default.Sync, "Sync", tint = Frost.text) }
+            IconButton(onClick = { repo.lock() }) { Icon(Icons.Default.Lock, "Lock", tint = Frost.text) }
         }
-        OutlinedTextField(query, { query = it }, placeholder = { Text("Search", fontFamily = mono()) }, singleLine = true,
-            leadingIcon = { Icon(Icons.Default.Search, null) }, modifier = Modifier.fillMaxWidth())
-        if (status.isNotEmpty()) Text(status, fontFamily = mono(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 6.dp))
+        FrostField(query, { query = it }, "", placeholder = "Search", leadingIcon = { Icon(Icons.Default.Search, null) })
+        if (status.isNotEmpty()) Text(status, fontFamily = FrostSans, fontSize = 12.sp, color = Frost.muted, modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp))
         LazyColumn(Modifier.weight(1f)) {
             items(shown, key = { it.optString("id") }) { e ->
-                Row(Modifier.fillMaxWidth().clickable { openId = e.optString("id") }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(kindIcon(kindOf(e)), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 12.dp))
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).frostGlass(radius = 14.dp, soft = true).pressable { openId = e.optString("id") }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(kindIcon(kindOf(e)), null, tint = Frost.muted, modifier = Modifier.padding(end = 14.dp).size(20.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(e.optString("title"), fontFamily = mono(), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                        Text(e.optString("title"), fontFamily = FrostSans, fontSize = 16.sp, color = Frost.text, maxLines = 1)
                         val sub = listOf(innerOf(e)?.optString("username").orEmpty(), e.optString("folder").takeUnless { it == "null" }.orEmpty())
                             .filter { it.isNotEmpty() }.joinToString(" · ")
-                        if (sub.isNotEmpty()) Text(sub, fontFamily = mono(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (sub.isNotEmpty()) Text(sub, fontFamily = mono(), fontSize = 12.sp, color = Frost.muted, maxLines = 1)
                     }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
             }
         }
-        if (entries.isEmpty()) Text("No entries yet.", fontFamily = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FortisActionButton(text = "+ NEW ENTRY", isPrimary = true, onClick = { creating = true })
+        if (entries.isEmpty()) Text("No entries yet.", fontFamily = FrostSans, color = Frost.muted)
+        FortisActionButton(text = "+ New entry", isPrimary = true, onClick = { creating = true })
     }
 }
 
@@ -267,7 +259,7 @@ private fun EntryDetail(repo: VaultRepository, id: String, onBack: () -> Unit, o
     var confirmDelete by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(id) { entry = vaultCall({ error = it }) { repo.get(id) } }
-    val e = entry ?: return Screen { Title("ENTRY", onBack); error?.let { Text(it, color = StatusRed, fontFamily = mono()) } }
+    val e = entry ?: return Screen { Title("Entry", onBack); error?.let { ErrorLine(it) } }
     val inner = innerOf(e) ?: JSONObject()
     val kind = kindOf(e)
 
@@ -281,8 +273,8 @@ private fun EntryDetail(repo: VaultRepository, id: String, onBack: () -> Unit, o
 
     Screen {
         Title(e.optString("title"), onBack) {
-            IconButton(onClick = { onEdit(e) }) { Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onBackground) }
-            IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Delete", tint = StatusRed) }
+            IconButton(onClick = { onEdit(e) }) { Icon(Icons.Default.Edit, "Edit", tint = Frost.text) }
+            IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Delete", tint = Frost.accent) }
         }
         Column(Modifier.verticalScroll(rememberScrollState())) {
             if (inner.has("totp") && !inner.isNull("totp")) TotpRow(repo, e)
@@ -307,7 +299,7 @@ private fun EntryDetail(repo: VaultRepository, id: String, onBack: () -> Unit, o
                 "Totp" -> { if (s("issuer").isNotEmpty()) Field("Issuer", s("issuer")); if (s("account").isNotEmpty()) Field("Account", s("account")) }
             }
             if (e.optString("notes").isNotEmpty()) Field("Notes", e.optString("notes"), secret = true, copy = true)
-            error?.let { Text(it, color = StatusRed, fontFamily = mono()) }
+            error?.let { ErrorLine(it) }
         }
     }
 }
@@ -318,14 +310,14 @@ private fun Field(label: String, value: String, secret: Boolean = false, copy: B
     val context = LocalContext.current
     var shown by remember { mutableStateOf(!secret) }
     FortisCard(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Text(label, fontFamily = mono(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FortisCaption(label)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (shown) value else "••••••••••", fontFamily = mono(), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-            if (secret) IconButton(onClick = { shown = !shown }) { Icon(if (shown) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show") }
+            Text(if (shown) value else "••••••••••", fontFamily = mono(), fontSize = 15.sp, color = Frost.text, modifier = Modifier.weight(1f))
+            if (secret) IconButton(onClick = { shown = !shown }) { Icon(if (shown) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show", tint = Frost.muted) }
             if (copy) IconButton(onClick = {
                 SecretClipboard.copy(context, label, value)
                 android.widget.Toast.makeText(context, "Copied — clears in 30 s", android.widget.Toast.LENGTH_SHORT).show()
-            }) { Icon(Icons.Default.ContentCopy, "Copy") }
+            }) { Icon(Icons.Default.ContentCopy, "Copy", tint = Frost.muted) }
         }
     }
 }
@@ -337,14 +329,27 @@ private fun TotpRow(repo: VaultRepository, e: JSONObject) {
     LaunchedEffect(e.optString("id")) { while (true) { code = repo.totp(e); delay(1000) } }
     val c = code ?: return
     FortisCard(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Text("One-time code", fontFamily = mono(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FortisCaption("One-time code")
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(c.first.chunked((c.first.length + 1) / 2).joinToString(" "), fontFamily = mono(), fontSize = 28.sp,
-                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-            Text("${c.second}s", fontFamily = mono(), color = if (c.second <= 5) StatusRed else MaterialTheme.colorScheme.onSurfaceVariant)
-            IconButton(onClick = { SecretClipboard.copy(context, "code", c.first) }) { Icon(Icons.Default.ContentCopy, "Copy") }
+                color = Frost.text, modifier = Modifier.weight(1f))
+            Text("${c.second}s", fontFamily = mono(), color = if (c.second <= 5) Frost.warn else Frost.muted)
+            IconButton(onClick = { SecretClipboard.copy(context, "code", c.first) }) { Icon(Icons.Default.ContentCopy, "Copy", tint = Frost.muted) }
         }
+        TotpBar(c.second)
     }
+}
+
+/** Thin bar showing how much of the 30 s window is left; amber in the last 5 s. */
+@Composable
+private fun TotpBar(secondsLeft: Long, period: Long = 30) {
+    LinearProgressIndicator(
+        progress = { (secondsLeft.toFloat() / period).coerceIn(0f, 1f) },
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(3.dp),
+        color = if (secondsLeft <= 5) Frost.warn else Frost.subtle,
+        trackColor = Frost.faint,
+        drawStopIndicator = {},
+    )
 }
 
 // ---------------------------------------------------------------- editor
@@ -383,33 +388,33 @@ private fun EntryEditor(repo: VaultRepository, existing: JSONObject?, onDone: (S
     }
 
     Screen {
-        Title(if (existing == null) "NEW ENTRY" else "EDIT", onBack = { onDone(null) })
+        Title(if (existing == null) "New entry" else "Edit", onBack = { onDone(null) })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             if (existing == null) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    KINDS.forEach { (k, label) -> FilterChip(selected = kind == k, onClick = { kind = k }, label = { Text(label, fontFamily = mono(), fontSize = 12.sp) }) }
+                    KINDS.forEach { (k, label) -> FrostChip(label, kind == k) { kind = k } }
                 }
             }
-            OutlinedTextField(title, { title = it }, label = { Text("Title", fontFamily = mono()) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            FrostField(title, { title = it }, "Title")
             for ((k, label, secret) in fields) {
                 var visible by remember(k) { mutableStateOf(!secret) }
-                OutlinedTextField(f(k), { v[k] = it }, label = { Text(label, fontFamily = mono()) },
+                FrostField(f(k), { v[k] = it }, label, mono = secret || k == "urls" || k == "number",
                     singleLine = k != "urls" && k != "address" && k != "content",
                     visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = if (k == "exp_month" || k == "exp_year") KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default,
                     trailingIcon = {
                         Row {
-                            if (secret) IconButton(onClick = { visible = !visible }) { Icon(Icons.Default.Visibility, "Show") }
-                            if (k == "password") IconButton(onClick = { showGen = true }) { Icon(Icons.Default.AutoFixHigh, "Generate") }
+                            if (secret) IconButton(onClick = { visible = !visible }) { Icon(if (visible) Icons.Default.VisibilityOff else Icons.Default.Visibility, "Show") }
+                            if (k == "password") IconButton(onClick = { showGen = true }) { Icon(Icons.Default.AutoFixHigh, "Generate", tint = Frost.accent) }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                    modifier = Modifier.padding(top = 8.dp))
             }
-            OutlinedTextField(folder, { folder = it }, label = { Text("Folder (optional)", fontFamily = mono()) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-            OutlinedTextField(notes, { notes = it }, label = { Text("Notes (optional)", fontFamily = mono()) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
-            error?.let { Text(it, color = StatusRed, fontFamily = mono(), modifier = Modifier.padding(top = 8.dp)) }
+            FrostField(folder, { folder = it }, "Folder (optional)", modifier = Modifier.padding(top = 8.dp))
+            FrostField(notes, { notes = it }, "Notes (optional)", singleLine = false, modifier = Modifier.padding(top = 8.dp))
+            error?.let { ErrorLine(it) }
         }
-        FortisActionButton(text = "SAVE", isPrimary = true, onClick = {
+        FortisActionButton(text = "Save", isPrimary = true, onClick = {
             if (title.isBlank()) { error = "Title is required."; return@FortisActionButton }
             val oldTotp = old.optJSONObject("totp")
             fun totp(secret: String): Any = if (secret.isBlank()) JSONObject.NULL else
@@ -453,19 +458,25 @@ private fun GeneratorDialog(onUse: (String) -> Unit, onDismiss: () -> Unit) {
     val shown = remember(pw, nonce) { if (nonce == 0) pw else runCatching { uniffi.fortis_bindings.generatePassword(length.toUInt(), upper, numbers, symbols) }.getOrDefault(pw) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Generate password", fontFamily = mono()) },
+        containerColor = Frost.sheet,
+        title = { Text("Generate password", fontFamily = FrostSans, color = Frost.text) },
         text = {
             Column {
-                Text(shown, fontFamily = mono(), fontSize = 16.sp, modifier = Modifier.padding(bottom = 12.dp))
-                Text("Length ${length.toInt()}", fontFamily = mono())
-                Slider(length, { length = it }, valueRange = 8f..64f)
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(upper, { upper = it }); Text("A–Z", fontFamily = mono()) }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(numbers, { numbers = it }); Text("0–9", fontFamily = mono()) }
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(symbols, { symbols = it }); Text("!@#…", fontFamily = mono()) }
+                Text(shown, fontFamily = mono(), fontSize = 16.sp, color = Frost.text,
+                    modifier = Modifier.fillMaxWidth().background(Frost.well, androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).padding(12.dp))
+                Spacer(Modifier.height(14.dp))
+                FortisCaption("Length ${length.toInt()}")
+                Slider(length, { length = it }, valueRange = 8f..64f,
+                    colors = SliderDefaults.colors(thumbColor = Frost.accent, activeTrackColor = Frost.accent, inactiveTrackColor = Frost.faint))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FrostToggle("A–Z", upper) { upper = it }
+                    FrostToggle("0–9", numbers) { numbers = it }
+                    FrostToggle("!@#…", symbols) { symbols = it }
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onUse(shown) }) { Text("Use", fontFamily = mono()) } },
-        dismissButton = { TextButton(onClick = { nonce++ }) { Text("Again", fontFamily = mono()) } },
+        confirmButton = { TextButton(onClick = { onUse(shown) }) { Text("Use", fontFamily = FrostSans, color = Frost.accent) } },
+        dismissButton = { TextButton(onClick = { nonce++ }) { Text("Again", fontFamily = FrostSans, color = Frost.muted) } },
     )
 }
 
@@ -473,7 +484,7 @@ private fun GeneratorDialog(onUse: (String) -> Unit, onDismiss: () -> Unit) {
 
 @Composable
 fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: (() -> Unit)? = null) {
-    VaultGate("AUTHENTICATOR", onBack) {
+    VaultGate("Authenticator", onBack) {
         val context = LocalContext.current
         val repo = remember { VaultRepository.get(context) }
         var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -483,22 +494,23 @@ fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: (() -> Unit)? = null
             while (true) { tick = System.currentTimeMillis() / 1000; delay(1000) }
         }
         Screen {
-            Title("AUTHENTICATOR", onBack)
-            if (entries.isEmpty()) Text("No 2FA codes yet. Add a 2FA entry or a 2FA secret on a login.", fontFamily = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Title("Authenticator", onBack)
+            if (entries.isEmpty()) Text("No 2FA codes yet. Add a 2FA entry or a 2FA secret on a login.", fontFamily = FrostSans, color = Frost.muted)
             LazyColumn {
                 items(entries, key = { it.optString("id") }) { e ->
                     val c = remember(tick) { repo.totp(e) }
-                    Row(Modifier.fillMaxWidth().clickable {
-                        c?.let { SecretClipboard.copy(context, "code", it.first); android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show() }
-                    }.padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(e.optString("title"), fontFamily = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(c?.first?.chunked((c.first.length + 1) / 2)?.joinToString(" ") ?: "—", fontFamily = mono(), fontSize = 26.sp,
-                                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).frostGlass(radius = 14.dp, soft = true).pressable {
+                        c?.let { SecretClipboard.copy(context, "code", it.first); android.widget.Toast.makeText(context, "Copied — clears in 30 s", android.widget.Toast.LENGTH_SHORT).show() }
+                    }.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(e.optString("title"), fontFamily = FrostSans, fontSize = 14.sp, color = Frost.muted, maxLines = 1)
+                                Text(c?.first?.chunked((c.first.length + 1) / 2)?.joinToString(" ") ?: "—", fontFamily = mono(), fontSize = 26.sp, color = Frost.text)
+                            }
+                            Text("${c?.second ?: 0}s", fontFamily = mono(), color = if ((c?.second ?: 30) <= 5) Frost.warn else Frost.muted)
                         }
-                        Text("${c?.second ?: 0}s", fontFamily = mono(), color = if ((c?.second ?: 30) <= 5) StatusRed else StatusGreen)
+                        c?.let { TotpBar(it.second) }
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
             }
         }

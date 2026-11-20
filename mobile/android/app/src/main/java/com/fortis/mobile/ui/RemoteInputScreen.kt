@@ -14,12 +14,19 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 import android.os.Build
 import com.fortis.mobile.network.BluetoothHidManager
 import com.fortis.mobile.data.Device
 import com.fortis.mobile.network.InputSocketClient
 import com.fortis.mobile.ui.components.FortisSpacing
+import com.fortis.mobile.ui.components.FortisCompactActionButton
+import com.fortis.mobile.ui.components.FrostChips
+import com.fortis.mobile.ui.components.FrostTopBar
+import com.fortis.mobile.ui.components.StatusDot
+import com.fortis.mobile.ui.components.frostFieldColors
+import com.fortis.mobile.ui.components.frostGlass
 import kotlinx.coroutines.delay
 import androidx.fragment.app.FragmentActivity
 import com.fortis.mobile.domain.CapabilityManager
@@ -28,6 +35,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import com.fortis.mobile.ui.theme.FrostMono
+import com.fortis.mobile.ui.theme.FrostSans
+import com.fortis.mobile.ui.theme.Frost
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -152,145 +161,87 @@ fun RemoteInputScreen(
         onDispose { stopNetwork() }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "REMOTE_INPUT — ${device.name}",
-                        fontFamily = FrostMono,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                },
-                navigationIcon = {
-                    TextButton(onClick = onNavigateBack) {
-                        Text(
-                            "< BACK",
-                            fontFamily = FrostMono,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        FrostTopBar("Remote input", onBack = onNavigateBack)
+
+        // Mode: network (fingerprint session) or Bluetooth HID
+        FrostChips(
+            listOf(false to "Network", true to "Bluetooth"),
+            useBluetooth,
+            { bt -> if (bt || networkAvailable) { if (bt) stopNetwork(); useBluetooth = bt; netStatus = null } },
+            Modifier.padding(bottom = 0.dp),
+        )
+        if (!networkAvailable) {
+            Text("Network mode is off on this laptop (input.enabled in agent.toml, xdotool/ydotool).",
+                fontFamily = FrostSans, fontSize = 12.sp, color = Frost.muted)
+        }
+        if (!useBluetooth) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(if (sessionId != null) true else null)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    when {
+                        sessionId != null -> "Controlling ${device.name} · ends after 2 min idle, 30 min max"
+                        starting -> "Waiting for your fingerprint…"
+                        else -> netStatus ?: "Not connected"
+                    },
+                    modifier = Modifier.weight(1f),
+                    fontFamily = FrostSans,
+                    fontSize = 13.sp,
+                    color = if (sessionId != null) Frost.text else Frost.muted
                 )
+                Spacer(Modifier.width(10.dp))
+                if (sessionId == null) {
+                    FortisCompactActionButton(text = "Start", onClick = { startNetwork() }, isPrimary = true, enabled = !starting)
+                } else {
+                    FortisCompactActionButton(text = "Stop", onClick = { stopNetwork(); netStatus = "Stopped" })
+                }
+            }
+        }
+
+        // Keyboard: typed text goes straight to the laptop
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = textValue,
+                onValueChange = {
+                    // Detect added text and send it over socket
+                    if (it.text.length > textValue.text.length) {
+                        val added = it.text.substring(textValue.text.length)
+                        socketClient?.sendText(added)
+                    } else if (it.text.length < textValue.text.length) {
+                        socketClient?.sendKey("BackSpace")
+                    }
+                    textValue = it
+                },
+                placeholder = { Text("Type to send text…", fontFamily = FrostSans) },
+                textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FrostSans, fontSize = 15.sp, color = Frost.text),
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.weight(1f),
+                colors = frostFieldColors(),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            FortisCompactActionButton(
+                text = "Enter",
+                isPrimary = true,
+                onClick = {
+                    socketClient?.sendKey("Return")
+                    textValue = TextFieldValue("")
+                },
             )
         }
-    ) { padding ->
-        Column(
+
+        // Trackpad
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(FortisSpacing.screenPadding),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Software Keyboard Input
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = textValue,
-                    onValueChange = {
-                        // Detect added text and send it over socket
-                        if (it.text.length > textValue.text.length) {
-                            val added = it.text.substring(textValue.text.length)
-                            socketClient?.sendText(added)
-                        } else if (it.text.length < textValue.text.length) {
-                            socketClient?.sendKey("BackSpace")
-                        }
-                        textValue = it
-                    },
-                    label = {
-                        Text(
-                            "Type here to send text...",
-                            fontFamily = FrostMono,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                    )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        socketClient?.sendKey("Return")
-                        textValue = TextFieldValue("")
-                    },
-                    shape = RoundedCornerShape(FortisSpacing.buttonCorner),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    )
-                ) {
-                    Text("Send", fontFamily = FrostMono)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-
-            // Mode: Bluetooth HID or network (fingerprint session)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (useBluetooth) "Mode: Bluetooth keyboard & mouse" else "Mode: network (Tailscale)",
-                    modifier = Modifier.weight(1f),
-                    fontFamily = FrostMono,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Switch(
-                    checked = !useBluetooth,
-                    enabled = networkAvailable && !starting,
-                    onCheckedChange = { net -> if (!net) stopNetwork(); useBluetooth = !net; netStatus = null },
-                )
-            }
-            if (!networkAvailable) {
-                Text("Network mode is off on this laptop (input.enabled in agent.toml, xdotool/ydotool).",
-                    fontFamily = FrostMono, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (!useBluetooth) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        when {
-                            sessionId != null -> "● Controlling ${device.name} (fingerprint session, max 30 min, ends after 2 min idle)"
-                            starting -> "Waiting for fingerprint…"
-                            else -> netStatus ?: "Not connected"
-                        },
-                        modifier = Modifier.weight(1f),
-                        fontFamily = FrostMono,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (sessionId != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (sessionId == null) Button(onClick = { startNetwork() }, enabled = !starting) { Text("START", fontFamily = FrostMono) }
-                    else OutlinedButton(onClick = { stopNetwork(); netStatus = "Stopped" }) { Text("STOP", fontFamily = FrostMono) }
-                }
-            }
-
-            Text(
-                "TRACKPAD_AREA",
-                style = MaterialTheme.typography.titleMedium,
-                fontFamily = FrostMono,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-
-            // Trackpad Area
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                        RoundedCornerShape(16.dp)
-                    )
+                .fillMaxWidth()
+                .weight(1f)
+                .frostGlass(radius = 20.dp, soft = true)
                     .pointerInput(Unit) {
                         awaitPointerEventScope {
                             while (true) {
@@ -337,29 +288,27 @@ fun RemoteInputScreen(
                             onLongPress = { handleClick(3) }
                         )
                     }
-            ) {
-                Text(
-                    "1 Finger: Move Mouse\n2 Fingers: Scroll\nTap: Left Click\nLong Press: Right Click",
-                    modifier = Modifier.align(Alignment.Center),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontFamily = FrostMono,
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center
-                )
-            }
+        ) {
+            Text(
+                "One finger: move · Two fingers: scroll\nTap: left click · Long press: right click",
+                modifier = Modifier.align(Alignment.Center),
+                color = Frost.subtle,
+                fontFamily = FrostSans,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
 
-            // Dedicated Click Buttons
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                Button(
-                    onClick = { },
+        // Click pads (press and hold to drag)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = 8.dp)
+                        .height(56.dp)
+                        .frostGlass(radius = 16.dp, soft = true)
                         .pointerInput(Unit) {
                             awaitPointerEventScope {
                                 while (true) {
@@ -373,19 +322,15 @@ fun RemoteInputScreen(
                                 }
                             }
                         },
-                    shape = RoundedCornerShape(FortisSpacing.buttonCorner),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text("LEFT_CLICK", fontFamily = FrostMono, style = MaterialTheme.typography.labelMedium)
+                    Text("Left click", fontFamily = FrostSans, fontSize = 14.sp, color = Frost.text)
                 }
-                Button(
-                    onClick = { },
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(start = 8.dp)
+                        .height(56.dp)
+                        .frostGlass(radius = 16.dp, soft = true)
                         .pointerInput(Unit) {
                             awaitPointerEventScope {
                                 while (true) {
@@ -399,15 +344,10 @@ fun RemoteInputScreen(
                                 }
                             }
                         },
-                    shape = RoundedCornerShape(FortisSpacing.buttonCorner),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text("RIGHT_CLICK", fontFamily = FrostMono, style = MaterialTheme.typography.labelMedium)
+                    Text("Right click", fontFamily = FrostSans, fontSize = 14.sp, color = Frost.text)
                 }
-            }
         }
     }
 }
