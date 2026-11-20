@@ -79,7 +79,7 @@ private fun mono() = FrostMono
  * password, or the fingerprint unlock.
  */
 @Composable
-private fun VaultGate(title: String, onBack: () -> Unit, unlocked: @Composable () -> Unit) {
+private fun VaultGate(title: String, onBack: (() -> Unit)?, unlocked: @Composable () -> Unit) {
     SecureWindow()
     val context = LocalContext.current
     val repo = remember { VaultRepository.get(context) }
@@ -90,7 +90,7 @@ private fun VaultGate(title: String, onBack: () -> Unit, unlocked: @Composable (
         VaultRepository.State.Unlocked -> unlocked()
         VaultRepository.State.NoVaultLaptop -> Screen {
             Title(title, onBack)
-            Text("Pick the laptop that holds your vault: in LAPTOPS, tap \"Use for vault sync\" under it (or pair one first).",
+            Text("Pick the laptop that holds your vault: in Settings → Laptops, tap \"Use for vault sync\" under it (or pair one first).",
                 fontFamily = mono(), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         VaultRepository.State.NotSetUp -> SetupScreen(title, repo, onBack) { state = repo.state() }
@@ -99,7 +99,7 @@ private fun VaultGate(title: String, onBack: () -> Unit, unlocked: @Composable (
 }
 
 @Composable
-private fun SetupScreen(title: String, repo: VaultRepository, onBack: () -> Unit, onDone: () -> Unit) {
+private fun SetupScreen(title: String, repo: VaultRepository, onBack: (() -> Unit)?, onDone: () -> Unit) {
     val activity = LocalContext.current as FragmentActivity
     var password by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -141,7 +141,7 @@ private fun SetupScreen(title: String, repo: VaultRepository, onBack: () -> Unit
 }
 
 @Composable
-private fun UnlockScreen(title: String, repo: VaultRepository, onBack: () -> Unit, onDone: () -> Unit) {
+private fun UnlockScreen(title: String, repo: VaultRepository, onBack: (() -> Unit)?, onDone: () -> Unit) {
     val activity = LocalContext.current as FragmentActivity
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -174,12 +174,12 @@ private suspend fun <T> vaultCall(onError: (String) -> Unit, block: () -> T): T?
 // ---------------------------------------------------------------- vault list
 
 @Composable
-fun VaultScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
+fun VaultScreen(viewModel: FortisViewModel, onBack: (() -> Unit)? = null) {
     VaultGate("VAULT", onBack) { VaultHome(onBack) }
 }
 
 @Composable
-private fun VaultHome(onBack: () -> Unit) {
+private fun VaultHome(onBack: (() -> Unit)?) {
     val context = LocalContext.current
     val repo = remember { VaultRepository.get(context) }
     var entries by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
@@ -472,7 +472,7 @@ private fun GeneratorDialog(onUse: (String) -> Unit, onDismiss: () -> Unit) {
 // ---------------------------------------------------------------- authenticator
 
 @Composable
-fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: () -> Unit = {}) {
+fun AuthenticatorScreen(viewModel: FortisViewModel, onBack: (() -> Unit)? = null) {
     VaultGate("AUTHENTICATOR", onBack) {
         val context = LocalContext.current
         val repo = remember { VaultRepository.get(context) }

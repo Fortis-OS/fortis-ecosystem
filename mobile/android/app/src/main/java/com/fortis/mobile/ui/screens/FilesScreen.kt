@@ -1,11 +1,6 @@
 package com.fortis.mobile.ui.screens
 
-import android.content.Context
-import android.net.Uri
 import android.os.Environment
-import android.provider.OpenableColumns
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,10 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.fortis.mobile.ensureTailscaleActive
 import com.fortis.mobile.data.LaptopApi
 import com.fortis.mobile.data.Listing
-import com.fortis.mobile.ui.rememberPhoneBackup
+import com.fortis.mobile.ui.fileSender
 import com.fortis.mobile.ui.sendClipboardToLaptop
 import com.fortis.mobile.ui.toast
 import com.fortis.mobile.ui.FortisViewModel
@@ -46,102 +40,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
     val files = listing?.entries ?: emptyList()
     var isLoading by remember { mutableStateOf(false) }
 
-    // Upload state
-    var isUploading by remember { mutableStateOf(false) }
-    var currentFileIndex by remember { mutableStateOf(0) }
-    var totalFiles by remember { mutableStateOf(0) }
-    var currentFileName by remember { mutableStateOf("") }
-    var uploadProgress by remember { mutableStateOf(0f) }
-
-    // Backup dialog
-    var showBackupDialog by remember { mutableStateOf(false) }
-    val startBackup = rememberPhoneBackup()
-
-    if (showBackupDialog) {
-        FortisConfirmDialog(
-            title = "Confirm Backup",
-            message = "Are you sure you want to force a laptop backup?",
-            onConfirm = {
-                showBackupDialog = false
-                startBackup()
-            },
-            onDismiss = { showBackupDialog = false }
-        )
-    }
-
-    if (isUploading) {
-        AlertDialog(
-            onDismissRequest = { /* Prevent dismissing */ },
-            title = {
-                Text("Uploading Files...", fontFamily = FrostMono, style = MaterialTheme.typography.titleLarge)
-            },
-            text = {
-                Column {
-                    Text(
-                        "File $currentFileIndex of $totalFiles: $currentFileName",
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FrostMono,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LinearProgressIndicator(
-                        progress = { uploadProgress },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = MaterialTheme.colorScheme.outline
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        "${(uploadProgress * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FrostMono,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {},
-            containerColor = MaterialTheme.colorScheme.surface,
-            textContentColor = MaterialTheme.colorScheme.onSurface
-        )
-    }
-
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris: List<Uri> ->
-        if (uris.isEmpty() || activeDevice == null) return@rememberLauncherForActivityResult
-        if (!ensureTailscaleActive(context)) return@rememberLauncherForActivityResult
-        totalFiles = uris.size
-        currentFileIndex = 0
-        isUploading = true
-        coroutineScope.launch {
-            var sent = 0
-            val failed = mutableListOf<String>()
-            for (uri in uris) {
-                val fileName = getFileName(context, uri)
-                currentFileIndex++
-                currentFileName = fileName
-                uploadProgress = 0f
-                try {
-                    LaptopApi.uploadFile(
-                        name = fileName,
-                        size = fileSize(context, uri),
-                        open = { context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("can't read $fileName") },
-                        onProgress = { uploadProgress = it },
-                    )
-                    sent++
-                } catch (e: Exception) {
-                    failed += "$fileName (${e.message})"
-                }
-            }
-            isUploading = false
-            context.toast(
-                if (failed.isEmpty()) "Sent $sent file(s) to the laptop"
-                else "Sent $sent, failed ${failed.size}: ${failed.joinToString()}",
-                long = failed.isNotEmpty(),
-            )
-        }
-    }
+    val sendFiles = fileSender()
 
     fun fetchFiles(path: String) {
         if (activeDevice == null) return
@@ -157,18 +56,19 @@ fun FilesScreen(viewModel: FortisViewModel) {
         }
     }
 
+    // The shared folders (agent.toml [files] roots); Up stops at the top of each
+    var roots by remember { mutableStateOf<List<String>>(emptyList()) }
+    val atRoot = currentPath in roots || roots.isEmpty()
+    val currentRoot = roots.firstOrNull { currentPath == it || currentPath.startsWith("$it/") }
+
     // Load the default folder, and again whenever the active laptop changes
     LaunchedEffect(activeDevice?.uuid) {
         listing = null
+        roots = runCatching { LaptopApi.fileRoots() }.getOrDefault(emptyList())
         fetchFiles("")
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            
-            .padding(FortisSpacing.screenPadding)
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         // ─── Action Buttons Row ──────────────────────────────────
         Row(
             modifier = Modifier
@@ -178,7 +78,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
         ) {
             FortisCompactActionButton(
                 text = "SEND FILES",
-                onClick = { filePickerLauncher.launch("*/*") },
+                onClick = sendFiles,
                 modifier = Modifier.weight(1f)
             )
             FortisCompactActionButton(
@@ -192,11 +92,10 @@ fun FilesScreen(viewModel: FortisViewModel) {
                 },
                 modifier = Modifier.weight(1f)
             )
-            FortisCompactActionButton(
-                text = "BACKUP",
-                onClick = { showBackupDialog = true },
-                modifier = Modifier.weight(1f)
-            )
+        }
+
+        if (roots.size > 1) {
+            FrostChips(roots.map { it to it.substringAfterLast('/') }, currentRoot ?: "", { fetchFiles(it) })
         }
 
         // ─── File Explorer ───────────────────────────────────────
@@ -204,7 +103,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(
                     onClick = { listing?.parent?.let { fetchFiles(it) } },
-                    enabled = listing?.parent != null && !isLoading,
+                    enabled = !atRoot && listing?.parent != null && !isLoading,
                     shape = RoundedCornerShape(FortisSpacing.buttonCorner),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -298,34 +197,4 @@ fun FilesScreen(viewModel: FortisViewModel) {
             }
         }
     }
-}
-
-private fun fileSize(context: Context, uri: Uri): Long =
-    context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
-        if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L
-    } ?: 0L
-
-private fun getFileName(context: Context, uri: Uri): String {
-    var result: String? = null
-    if (uri.scheme == "content") {
-        val cursor = context.contentResolver.query(uri, null, null, null, null)
-        try {
-            if (cursor != null && cursor.moveToFirst()) {
-                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (index != -1) {
-                    result = cursor.getString(index)
-                }
-            }
-        } finally {
-            cursor?.close()
-        }
-    }
-    if (result == null) {
-        result = uri.path
-        val cut = result?.lastIndexOf('/') ?: -1
-        if (cut != -1) {
-            result = result?.substring(cut + 1)
-        }
-    }
-    return result ?: "uploaded_file"
 }

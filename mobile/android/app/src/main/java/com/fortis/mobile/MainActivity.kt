@@ -21,7 +21,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.fortis.mobile.ui.components.DockItem
 import com.fortis.mobile.ui.components.FrostBackground
+import com.fortis.mobile.ui.components.FrostDock
 import com.fortis.mobile.ui.theme.Frost
 import com.fortis.mobile.ui.theme.FrostSans
 import androidx.compose.ui.text.font.FontFamily
@@ -74,14 +76,20 @@ private object Routes {
     const val NOTIFICATION_APPS = "notification-apps"
     const val REMOTE_INPUT = "remote-input"
     const val WEBCAM = "webcam"
-    const val VAULT = "vault"
-    const val AUTHENTICATOR = "authenticator"
 }
 
 @Composable
 fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
     val nav = rememberNavController()
     val activeDevice by viewModel.activeDevice.collectAsState()
+    val devices by viewModel.devices.collectAsState()
+
+    // Laptops exist but none is active (fresh start): pick the vault laptop, else the first one.
+    LaunchedEffect(devices, activeDevice) {
+        if (activeDevice == null && devices.isNotEmpty()) {
+            viewModel.selectDevice(devices.firstOrNull { it.isVaultLaptop } ?: devices.first())
+        }
+    }
 
     FrostBackground {
         // keep every screen clear of the status bar and the gesture bar
@@ -91,9 +99,7 @@ fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
             modifier = Modifier.statusBarsPadding().navigationBarsPadding(),
         ) {
             composable(Routes.MAIN) {
-                // No laptop chosen yet: the laptop list (pairing, sudo setup)
-                if (activeDevice == null) DevicesScreen(viewModel = viewModel)
-                else MainTabs(viewModel = viewModel, open = { nav.navigate(it) })
+                MainTabs(viewModel = viewModel, open = { nav.navigate(it) })
             }
             composable(Routes.NOTIFICATION_APPS) {
                 NotificationAppsScreen(onBack = { nav.popBackStack() })
@@ -108,56 +114,33 @@ fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
                 if (device == null) LaunchedEffect(Unit) { nav.popBackStack() }
                 else com.fortis.mobile.webcam.WebcamScreen(device = device, onBack = { nav.popBackStack() })
             }
-            composable(Routes.VAULT) {
-                com.fortis.mobile.encrypt.VaultScreen(viewModel = viewModel, onBack = { nav.popBackStack() })
-            }
-            composable(Routes.AUTHENTICATOR) {
-                com.fortis.mobile.encrypt.AuthenticatorScreen(viewModel = viewModel, onBack = { nav.popBackStack() })
-            }
         }
     }
+}
+
+private object Tab {
+    const val HOME = 0
+    const val VAULT = 1
+    const val LAPTOP = 2
+    const val SETTINGS = 3
 }
 
 @Composable
 private fun MainTabs(viewModel: FortisViewModel, open: (String) -> Unit) {
     // survives opening a sub-screen and coming back
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(Tab.HOME) }
     val tabs = listOf(
-        "Dashboard" to Icons.Default.Dashboard,
-        "Control" to Icons.Default.SettingsRemote,
-        "Files" to Icons.Default.Folder,
-        "Monitor" to Icons.Default.MonitorHeart,
-        "More" to Icons.Default.MoreHoriz,
+        DockItem("Home", Icons.Default.Home),
+        DockItem("Vault", Icons.Default.Lock),
+        DockItem("Laptop", Icons.Default.Laptop),
+        DockItem("Settings", Icons.Default.Settings),
     )
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),   // the NavHost already keeps clear of the system bars
         containerColor = Color.Transparent,
         contentColor = Frost.text,
-        bottomBar = {
-            NavigationBar(
-                containerColor = Frost.sheet,
-                contentColor = Frost.text,
-                tonalElevation = 0.dp,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-            ) {
-                tabs.forEachIndexed { index, (label, icon) ->
-                    NavigationBarItem(
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label, fontFamily = FrostSans, fontSize = 12.sp) },
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Frost.accent,
-                            selectedTextColor = Frost.accent,
-                            unselectedIconColor = Frost.muted,
-                            unselectedTextColor = Frost.muted,
-                            indicatorColor = Frost.accentSoft,
-                        )
-                    )
-                }
-            }
-        }
+        bottomBar = { FrostDock(tabs, selectedTab, { selectedTab = it }) },
     ) { paddingValues ->
         Box(
             modifier = Modifier
@@ -165,24 +148,22 @@ private fun MainTabs(viewModel: FortisViewModel, open: (String) -> Unit) {
                 .fillMaxSize()
         ) {
             when (selectedTab) {
-                0 -> DashboardScreen(
+                Tab.HOME -> HomeScreen(
                     viewModel = viewModel,
                     onOpenRemoteInput = { open(Routes.REMOTE_INPUT) },
-                    onOpenFiles = { selectedTab = 2 },
-                    onSwitchDevice = { viewModel.clearActiveDevice() }
+                    onOpenVault = { selectedTab = Tab.VAULT },
+                    onOpenSettings = { selectedTab = Tab.SETTINGS },
                 )
-                1 -> ControlScreen(
+                Tab.VAULT -> VaultTab(viewModel = viewModel)
+                Tab.LAPTOP -> LaptopScreen(
                     viewModel = viewModel,
                     onOpenRemoteInput = { open(Routes.REMOTE_INPUT) },
-                    onOpenWebcam = { open(Routes.WEBCAM) }
+                    onOpenWebcam = { open(Routes.WEBCAM) },
+                    onOpenSettings = { selectedTab = Tab.SETTINGS },
                 )
-                2 -> FilesScreen(viewModel = viewModel)
-                3 -> MonitorScreen(viewModel = viewModel)
-                4 -> MoreScreen(
+                Tab.SETTINGS -> SettingsScreen(
                     viewModel = viewModel,
                     onOpenNotificationApps = { open(Routes.NOTIFICATION_APPS) },
-                    onOpenVault = { open(Routes.VAULT) },
-                    onOpenAuthenticator = { open(Routes.AUTHENTICATOR) }
                 )
             }
         }

@@ -1,6 +1,7 @@
 package com.fortis.mobile.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.fortis.mobile.data.Device
 import com.fortis.mobile.pairing.Pairing
 import com.fortis.mobile.pairing.PairingInfo
@@ -35,17 +37,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Paired laptops; pick one to control, or pair a new one. */
+/**
+ * Settings → Laptops: paired laptops (tap to make one active), the vault laptop, forget, and the
+ * sudo-approval card. [onPair] opens the pairing screen.
+ */
 @Composable
-fun DevicesScreen(viewModel: FortisViewModel) {
+fun LaptopsSection(viewModel: FortisViewModel, onPair: () -> Unit) {
     val devices by viewModel.devices.collectAsState()
-    var showPair by remember { mutableStateOf(false) }
+    val active by viewModel.activeDevice.collectAsState()
+    val online by com.fortis.mobile.service.EventsService.online.collectAsState()
     var toRemove by remember { mutableStateOf<Device?>(null) }
-
-    if (showPair) {
-        PairScreen(viewModel = viewModel, firstLaptop = devices.isEmpty(), onDone = { showPair = false })
-        return
-    }
 
     toRemove?.let { d ->
         FortisConfirmDialog(
@@ -56,51 +57,63 @@ fun DevicesScreen(viewModel: FortisViewModel) {
         )
     }
 
-    Column(Modifier.fillMaxSize().padding(FortisSpacing.screenPadding)) {
-        Text("LAPTOPS", style = MaterialTheme.typography.headlineLarge, fontFamily = FrostMono,
-            color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(bottom = 24.dp))
+    Column(Modifier.fillMaxWidth()) {
         if (devices.isEmpty()) {
-            Text("No laptop paired yet. On the laptop run:\n\nfortis pair\n\nthen tap PAIR LAPTOP and scan the QR code.",
-                fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FortisCard {
+                Text("No laptop paired yet. On the laptop run:", fontFamily = FrostSans, color = Frost.muted)
+                Text("fortis pair", fontFamily = FrostMono, color = Frost.text, modifier = Modifier.padding(vertical = 8.dp))
+                Text("then tap Pair laptop and scan the QR code.", fontFamily = FrostSans, color = Frost.muted)
+            }
+            Spacer(Modifier.height(12.dp))
         }
-        if (devices.isNotEmpty()) SudoSettingsCard()
-        LazyColumn(Modifier.weight(1f)) {
-            items(devices, key = { it.uuid }) { device ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    shape = RoundedCornerShape(FortisSpacing.cardCorner),
-                    onClick = { viewModel.selectDevice(device) },
-                ) {
-                    Row(Modifier.padding(FortisSpacing.cardPadding).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(10.dp).background(if (device.isOnline) StatusGreen else StatusRed, CircleShape))
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(device.name, style = MaterialTheme.typography.titleLarge, fontFamily = FrostMono,
-                                    color = MaterialTheme.colorScheme.onSurface)
-                                if (device.isVaultLaptop) {
-                                    Spacer(Modifier.width(8.dp))
-                                    Icon(Icons.Default.Lock, contentDescription = "Vault laptop", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                }
-                            }
-                            Text("${device.ipAddress}:${device.port}", style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (!device.isVaultLaptop) {
-                                TextButton(onClick = { viewModel.makeVaultLaptop(device) }, contentPadding = PaddingValues(0.dp)) {
-                                    Text("Use for vault sync", fontFamily = FrostMono, style = MaterialTheme.typography.labelSmall)
-                                }
-                            }
-                        }
-                        IconButton(onClick = { toRemove = device }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Forget", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        devices.forEach { device ->
+            val isActive = device.uuid == active?.uuid
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp)
+                    .frostGlass(soft = !isActive)
+                    .then(if (isActive) Modifier.border(1.dp, Frost.accentSelectBorder, RoundedCornerShape(FortisSpacing.cardCorner)) else Modifier)
+                    .pressable { viewModel.selectDevice(device) }
+                    .padding(FortisSpacing.cardPadding),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusDot(device.uuid in online)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(device.name, fontFamily = FrostSans, fontSize = 18.sp, color = Frost.text)
+                        if (device.isVaultLaptop) {
+                            Spacer(Modifier.width(8.dp))
+                            Icon(Icons.Default.Lock, contentDescription = "Vault laptop", tint = Frost.accent, modifier = Modifier.size(15.dp))
                         }
                     }
+                    Text("${device.ipAddress}:${device.port}", fontFamily = FrostMono, fontSize = 12.sp, color = Frost.muted)
+                    Text(
+                        listOfNotNull(
+                            if (isActive) "Active" else "Tap to make active",
+                            if (device.isVaultLaptop) "vault laptop" else null,
+                        ).joinToString(" · "),
+                        fontFamily = FrostSans, fontSize = 12.sp, color = if (isActive) Frost.accent else Frost.subtle,
+                    )
+                    if (!device.isVaultLaptop) {
+                        Text(
+                            "Use for vault sync",
+                            fontFamily = FrostSans, fontSize = 12.sp, color = Frost.accent,
+                            modifier = Modifier.padding(top = 6.dp).pressable { viewModel.makeVaultLaptop(device) },
+                        )
+                    }
+                }
+                IconButton(onClick = { toRemove = device }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Forget", tint = Frost.muted)
                 }
             }
         }
-        FortisActionButton(text = "+ PAIR LAPTOP", isPrimary = true, onClick = { showPair = true })
+        FortisActionButton(text = "+ Pair laptop", isPrimary = true, onClick = onPair)
+        if (devices.isNotEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            SudoSettingsCard()
+        }
     }
 }
 

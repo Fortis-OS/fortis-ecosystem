@@ -74,8 +74,6 @@ fun ControlScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            
-            .padding(FortisSpacing.screenPadding)
             .verticalScroll(scrollState)
     ) {
         // ─── Power Controls ──────────────────────────────────────

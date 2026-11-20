@@ -23,6 +23,9 @@ object Frost {
     val border = Color.White.copy(alpha = 0.12f)
     val highlight = Color.White.copy(alpha = 0.08f)          // glass top edge
     val fill = Color(242, 242, 245, 230)                     // the second data series
+    val textOnFill = Color(0xFF1A1A1F)                       // text and icons on fill
+    val accentSelect = Color(242, 29, 67, 107)               // 0.42: the selected row / dock item
+    val accentSelectBorder = Color(255, 89, 115, 191)        // 0.75
 
     // status: kept apart from the accent, so a failure never looks like a button
     val ok = Color(0xFF34C759)

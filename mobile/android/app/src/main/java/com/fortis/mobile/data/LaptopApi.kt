@@ -120,6 +120,12 @@ object LaptopApi {
     suspend fun backupLogs(device: Device? = null): String =
         call("/api/v1/backup/logs", device) { get() }.ifBlank { "No logs yet." }
 
+    /** The folders the laptop shares (agent.toml `[files] roots`), as absolute paths. */
+    suspend fun fileRoots(device: Device? = null): List<String> {
+        val arr = JSONObject(call("/api/v1/files/roots", device) { get() }).optJSONArray("roots")
+        return (0 until (arr?.length() ?: 0)).map { arr!!.getString(it) }
+    }
+
     /** An empty [path] asks for the laptop's default folder. */
     suspend fun listFiles(path: String, device: Device? = null): Listing {
         val q = if (path.isEmpty()) "" else "?path=" + android.net.Uri.encode(path)
