@@ -81,7 +81,11 @@ class EventsService : Service() {
     private fun connect(laptop: Device) {
         if (stopped) return
         val req = FortisApiClient.buildRequest("/api/v1/events", laptop) { get() }
-        sockets[laptop.uuid] = FortisApiClient.streaming.newWebSocket(req, object : WebSocketListener() {
+        // Start the silence clock now, not at onOpen: a connection that never opens (app frozen
+        // mid-connect, link dropped) must still time out instead of blocking reconnects forever.
+        lastFrame[laptop.uuid] = System.currentTimeMillis()
+        android.util.Log.i(TAG, "connecting events to ${laptop.name}")
+        sockets[laptop.uuid] = FortisApiClient.events.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 main.post { backoff[laptop.uuid] = 0; lastFrame[laptop.uuid] = System.currentTimeMillis() }
             }
@@ -93,8 +97,14 @@ class EventsService : Service() {
                 handle(current, webSocket, msg)
             }
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) = main.post { dropped(laptop.uuid, webSocket) }.let { }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) = main.post { dropped(laptop.uuid, webSocket) }.let { }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                android.util.Log.w(TAG, "events to ${laptop.name} failed: ${t.javaClass.simpleName}: ${t.message} (HTTP ${response?.code})")
+                main.post { dropped(laptop.uuid, webSocket) }
+            }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                android.util.Log.i(TAG, "events to ${laptop.name} closed: $code $reason")
+                main.post { dropped(laptop.uuid, webSocket) }
+            }
         })
         updateStatus()
     }
@@ -118,11 +128,20 @@ class EventsService : Service() {
         main.postDelayed({ DeviceRepository.get(this).get(uuid)?.let { if (uuid !in sockets) connect(it) } }, next)
     }
 
-    /** The agent pings every 25 s; reconnect if a laptop has been silent for 70 s. */
+    /**
+     * The agent pings every 25 s; a laptop silent for 45 s (or a connection that never opened in
+     * that time) is cancelled. The socket is also dropped from [sockets] right away, so the next
+     * reconcile reconnects even if OkHttp never calls back.
+     */
     private val watchdog = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
-            sockets.entries.filter { now - (lastFrame[it.key] ?: now) > 70_000 }.forEach { it.value.cancel() }
+            sockets.entries.filter { now - (lastFrame[it.key] ?: 0L) > 45_000 }.toList().forEach { (uuid, ws) ->
+                android.util.Log.w(TAG, "events to $uuid silent for ${(now - (lastFrame[uuid] ?: 0L)) / 1000}s: reconnecting")
+                sockets.remove(uuid)
+                setOnline(uuid, false)
+                ws.cancel()
+            }
             reconcile()
             main.postDelayed(this, 30_000)
         }
@@ -151,6 +170,7 @@ class EventsService : Service() {
     }
 
     companion object {
+        private const val TAG = "FortisEvents"
         const val CHANNEL_SERVICE = "fortis.connection"
         const val CHANNEL_SUDO = "fortis.sudo"
         private const val NOTIF_ID = 50
@@ -173,6 +193,7 @@ class EventsService : Service() {
             if (!enabled(context)) return
             if (DeviceRepository.get(context).devices.value.isEmpty() && !running) return
             runCatching { ContextCompat.startForegroundService(context, Intent(context, EventsService::class.java)) }
+                .onFailure { android.util.Log.w(TAG, "couldn't start the events service: ${it.javaClass.simpleName}: ${it.message}") }
         }
 
         fun channels(context: Context) {

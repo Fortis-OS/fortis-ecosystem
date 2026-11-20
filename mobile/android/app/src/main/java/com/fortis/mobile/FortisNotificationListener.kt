@@ -35,6 +35,17 @@ class FortisNotificationListener : NotificationListenerService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var last = 0L
 
+    /**
+     * The system (re)binds this listener whenever Fortis' process starts: after an app update,
+     * after Android or the OEM's battery manager killed the app, and at boot. Some phones (XOS)
+     * never deliver MY_PACKAGE_REPLACED to Fortis, so this is also where the sudo/events
+     * connection gets restarted.
+     */
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        com.fortis.mobile.service.EventsService.start(this)
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn ?: return
         val pkg = sbn.packageName

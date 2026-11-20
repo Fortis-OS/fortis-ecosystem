@@ -56,6 +56,13 @@ object FortisApiClient {
     /** For WebSockets (events, input): no read timeout. */
     val streaming: OkHttpClient = client.newBuilder().readTimeout(0, TimeUnit.SECONDS).pingInterval(0, TimeUnit.SECONDS).build()
 
+    /**
+     * For the long-lived events stream: a WebSocket ping every 15 s, so a link that died without
+     * telling us (mobile data / Tailscale relay resets) fails within ~15-30 s and reconnects,
+     * instead of waiting for the 70 s silence watchdog.
+     */
+    val events: OkHttpClient = streaming.newBuilder().pingInterval(15, TimeUnit.SECONDS).build()
+
     fun getClient(): OkHttpClient = client
 
     /** A signed request to [device] (defaults to the active laptop). */

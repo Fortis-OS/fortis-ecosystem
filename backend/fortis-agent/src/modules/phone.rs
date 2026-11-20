@@ -45,29 +45,41 @@ async fn events_loop(st: Shared, device_id: uuid::Uuid, socket: WebSocket) {
     let mut ping = tokio::time::interval(Duration::from_secs(25));
     ping.tick().await;
 
-    if tx.send(Message::Text(hello.into())).await.is_ok() {
+    let started = std::time::Instant::now();
+    // Why the stream ended, for the log (flaky mobile links are otherwise invisible).
+    let why: String = if tx.send(Message::Text(hello.into())).await.is_err() {
+        "could not send hello".into()
+    } else {
         loop {
             tokio::select! {
                 ev = events.recv() => match ev {
-                    Ok(frame) => if tx.send(Message::Text(frame.into())).await.is_err() { break },
+                    Ok(frame) => if let Err(e) = tx.send(Message::Text(frame.into())).await { break format!("send failed: {e}") },
                     Err(RecvError::Lagged(_)) => continue,
-                    Err(RecvError::Closed) => break,
+                    Err(RecvError::Closed) => break "event hub closed".into(),
                 },
                 incoming = rx.next() => match incoming {
-                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    Some(Ok(Message::Close(c))) => break match c {
+                        Some(c) => format!("phone closed ({} {})", c.code, c.reason),
+                        None => "phone closed".into(),
+                    },
+                    None => break "connection ended".into(),
+                    Some(Err(e)) => break format!("receive failed: {e}"),
                     _ => {} // pongs and anything else are ignored
                 },
                 _ = ping.tick() => {
                     // A revoked device is disconnected at the next ping.
-                    if st.devices.get(&device_id).is_none() { break }
+                    if st.devices.get(&device_id).is_none() { break "device revoked".into() }
                     let f = sign_frame(&st.agent_key, &json!({ "type": "ping", "t": fortis_core::unix_now() }));
-                    if tx.send(Message::Text(f.into())).await.is_err() { break }
+                    if let Err(e) = tx.send(Message::Text(f.into())).await { break format!("ping failed: {e}") }
                 }
             }
         }
-    }
+    };
     st.events.disconnected(device_id);
-    log::info!("device {device_id} disconnected from events");
+    log::info!(
+        "device {device_id} disconnected from events after {}s: {why}",
+        started.elapsed().as_secs()
+    );
 }
 
 // ---- Sudo approval reply ------------------------------------------------------------
