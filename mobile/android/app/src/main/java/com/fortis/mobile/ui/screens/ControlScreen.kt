@@ -1,6 +1,5 @@
 package com.fortis.mobile.ui.screens
 
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,19 +10,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.fortis.mobile.ensureTailscaleActive
 import com.fortis.mobile.formatMicroseconds
-import com.fortis.mobile.network.FortisApiClient
+import com.fortis.mobile.ui.laptopAction
+import com.fortis.mobile.ui.toast
 import com.fortis.mobile.ui.FortisViewModel
 import com.fortis.mobile.ui.components.*
 import com.fortis.mobile.ui.theme.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 
 @Composable
 fun ControlScreen(
@@ -34,19 +27,26 @@ fun ControlScreen(
     val context = LocalContext.current
     val activeDevice by viewModel.activeDevice.collectAsState()
 
-    val ip = activeDevice?.ipAddress ?: ""
     val coroutineScope = rememberCoroutineScope()
 
     var showShutdownDialog by remember { mutableStateOf(false) }
 
-    // Media state
-    var mediaTitle by remember { mutableStateOf("") }
-    var mediaArtist by remember { mutableStateOf("") }
-    var mediaAlbum by remember { mutableStateOf("") }
-    var mediaSource by remember { mutableStateOf("") }
-    var mediaStatus by remember { mutableStateOf("") }
+    // Media: shared poll from the ViewModel; the position ticks locally between polls
+    val media by viewModel.media.collectAsState()
+    val mediaTitle = media?.title ?: ""
+    val mediaArtist = media?.artist ?: ""
+    val mediaSource = media?.player ?: ""
+    val mediaDuration = media?.lengthUs?.toFloat() ?: 0f
     var mediaPosition by remember { mutableStateOf(0f) }
-    var mediaDuration by remember { mutableStateOf(0f) }
+    LaunchedEffect(media) {
+        mediaPosition = media?.positionUs?.toFloat() ?: 0f
+        if (media?.isPlaying == true) {
+            while (true) {
+                delay(1000)
+                if (mediaPosition < mediaDuration) mediaPosition += 1_000_000f
+            }
+        }
+    }
 
     // Shutdown dialog
     if (showShutdownDialog) {
@@ -55,123 +55,19 @@ fun ControlScreen(
             message = "Are you sure you want to shut down the laptop?",
             onConfirm = {
                 showShutdownDialog = false
-                if (ip.isEmpty()) {
-                    Toast.makeText(context, "Set IP/Key in Workspace!", Toast.LENGTH_SHORT).show()
-                    return@FortisConfirmDialog
-                }
-                coroutineScope.launch {
-                    try {
-                        withContext(Dispatchers.IO) {
-                            val client = FortisApiClient.getClient()
-                            val json = """{"action":"shutdown"}"""
-                            val body = json.toRequestBody("application/json".toMediaType())
-                            val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
-                            client.newCall(request).execute().close()
-                        }
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Shutting Down", Toast.LENGTH_SHORT).show()
-                        }
-                    } catch (e: Exception) {}
-                }
+                coroutineScope.laptopAction(context, "shutdown", "Shutting down")
             },
             onDismiss = { showShutdownDialog = false }
         )
     }
 
-    // Media polling
-    LaunchedEffect(Unit) {
-        while (true) {
-            if (ip.isNotEmpty() && ensureTailscaleActive(context)) {
-                try {
-                    val client = FortisApiClient.getClient()
-                    val request = FortisApiClient.buildRequest("/api/v1/media")
-                    withContext(Dispatchers.IO) {
-                        val response = client.newCall(request).execute()
-                        if (response.isSuccessful) {
-                            response.body?.string()?.let { jsonString ->
-                                val json = JSONObject(jsonString)
-                                withContext(Dispatchers.Main) {
-                                    mediaTitle = json.optString("title", "")
-                                    mediaArtist = json.optString("artist", "")
-                                    mediaAlbum = json.optString("album", "")
-                                    mediaSource = json.optString("player", "")
-                                    mediaStatus = json.optString("status", "")
-                                    mediaPosition = json.optLong("position_us", 0L).toFloat()
-                                    mediaDuration = json.optLong("length_us", 0L).toFloat()
-                                }
-                            }
-                        }
-                        response.close()
-                    }
-                } catch (e: Exception) {}
-            }
-            delay(5000)
-        }
-    }
+    fun sendAction(action: String, successMessage: String) =
+        coroutineScope.laptopAction(context, action, successMessage)
 
-    // Position ticker
-    LaunchedEffect(mediaStatus) {
-        if (mediaStatus == "Playing") {
-            while (true) {
-                delay(1000)
-                if (mediaPosition < mediaDuration) {
-                    mediaPosition += 1000000f
-                }
-            }
+    fun sendActionWithVolumeToast(action: String) =
+        coroutineScope.laptopAction(context, action) { body ->
+            if (body?.has("volume_percent") == true) context.toast("Volume: ${body.optInt("volume_percent")}%")
         }
-    }
-
-    fun sendAction(action: String, successMessage: String) {
-        if (ip.isEmpty()) {
-            Toast.makeText(context, "Set IP and API Key in Settings first!", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (!ensureTailscaleActive(context)) return
-        coroutineScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val client = FortisApiClient.getClient()
-                    val json = """{"action":"$action"}"""
-                    val body = json.toRequestBody("application/json".toMediaType())
-                    val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
-                    val response = client.newCall(request).execute()
-                    response.close()
-                }
-                if (successMessage.isNotEmpty()) {
-                    Toast.makeText(context, successMessage, Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    fun sendActionWithVolumeToast(action: String) {
-        if (ip.isEmpty()) return
-        coroutineScope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    val client = FortisApiClient.getClient()
-                    val json = """{"action":"$action"}"""
-                    val body = json.toRequestBody("application/json".toMediaType())
-                    val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
-                    val response = client.newCall(request).execute()
-                    if (response.isSuccessful) {
-                        response.body?.string()?.let { jsonString ->
-                            val jsonObj = JSONObject(jsonString)
-                            val vol = if (jsonObj.has("volume_percent")) "${jsonObj.optInt("volume_percent")}%" else ""
-                            if (vol.isNotEmpty()) {
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(context, "Volume: $vol", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    }
-                    response.close()
-                }
-            } catch (e: Exception) {}
-        }
-    }
 
     val scrollState = rememberScrollState()
 

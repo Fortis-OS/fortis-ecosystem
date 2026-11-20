@@ -1,7 +1,5 @@
 package com.fortis.mobile.ui.screens
 
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -13,92 +11,37 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.fortis.mobile.ensureTailscaleActive
-import com.fortis.mobile.network.FortisApiClient
+import com.fortis.mobile.data.LaptopApi
 import com.fortis.mobile.ui.FortisViewModel
 import com.fortis.mobile.ui.components.*
 import com.fortis.mobile.ui.theme.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 @Composable
 fun MonitorScreen(viewModel: FortisViewModel) {
     val context = LocalContext.current
     val activeDevice by viewModel.activeDevice.collectAsState()
 
-    val ip = activeDevice?.ipAddress ?: ""
     val coroutineScope = rememberCoroutineScope()
 
-    // Telemetry state
-    var uptime by remember { mutableStateOf("--") }
-    var cpu by remember { mutableStateOf("--") }
-    var mem by remember { mutableStateOf("--") }
-    var swap by remember { mutableStateOf("--") }
-    var storage by remember { mutableStateOf("--") }
-    var temp by remember { mutableStateOf("--") }
-
-    // Backup readiness
-    var tsActive by remember { mutableStateOf(false) }
-    var sshActive by remember { mutableStateOf(false) }
-    var storageGb by remember { mutableStateOf("--") }
-    var batteryLevel by remember { mutableStateOf("--") }
-    var batteryOk by remember { mutableStateOf(false) }
-    var storageOk by remember { mutableStateOf(false) }
+    val telemetry by viewModel.telemetry.collectAsState()
+    val readiness by viewModel.readiness.collectAsState()
+    val cpu = telemetry?.cpu ?: "--"
+    val mem = telemetry?.mem ?: "--"
+    val swap = telemetry?.swap ?: "--"
+    val storage = telemetry?.storage ?: "--"
+    val temp = telemetry?.temp ?: "--"
+    val uptime = telemetry?.uptime ?: "--"
+    val batteryLevel = readiness?.let { "${it.batteryPercent}%" } ?: "--"
+    val batteryOk = readiness?.batteryOk == true
+    val storageGb = readiness?.let { "${it.freeGb} GB" } ?: "--"
+    val storageOk = readiness?.storageOk == true
+    val tsActive = readiness?.tailscale == true
+    val sshActive = readiness?.sshd == true
 
     // Logs
     var logsContent by remember { mutableStateOf("Tap 'Load Logs' to fetch live backup logs.") }
     var isLoadingLogs by remember { mutableStateOf(false) }
-
-    // Auto-refresh telemetry
-    LaunchedEffect(Unit) {
-        if (ip.isNotEmpty()) {
-            while (true) {
-                try {
-                    withContext(Dispatchers.IO) {
-                        val client = FortisApiClient.getClient()
-                        val request = FortisApiClient.buildRequest("/api/v1/telemetry") { get() }
-                        client.newCall(request).execute().use { response ->
-                            val bodyStr = response.body?.string() ?: "{}"
-                            val t = com.fortis.mobile.network.Telemetry.parse(bodyStr)
-                            uptime = t.uptime; cpu = t.cpu; mem = t.mem; swap = t.swap; storage = t.storage; temp = t.temp
-                        }
-                    }
-                } catch (e: Exception) {}
-                delay(5000)
-            }
-        }
-    }
-
-    // Auto-refresh backup readiness
-    LaunchedEffect(Unit) {
-        while (true) {
-            tsActive = ensureTailscaleActive(context)
-
-            sshActive = try {
-                withContext(Dispatchers.IO) {
-                    val socket = java.net.Socket()
-                    socket.connect(java.net.InetSocketAddress("127.0.0.1", 8022), 500)
-                    socket.close()
-                    true
-                }
-            } catch (e: Exception) { false }
-
-            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-            val bytesAvailable = stat.blockSizeLong * stat.availableBlocksLong
-            val gbAvailable = bytesAvailable / (1024 * 1024 * 1024)
-            storageGb = "${gbAvailable} GB"
-            storageOk = gbAvailable > 5
-
-            val bm = context.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
-            val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
-            batteryLevel = "${level}%"
-            batteryOk = level > 20
-
-            delay(5000)
-        }
-    }
 
     val scrollState = rememberScrollState()
 
@@ -215,14 +158,9 @@ fun MonitorScreen(viewModel: FortisViewModel) {
                     isLoadingLogs = true
                     coroutineScope.launch {
                         try {
-                            val result = withContext(Dispatchers.IO) {
-                                val client = FortisApiClient.getClient()
-                                val request = FortisApiClient.buildRequest("/api/v1/backup/logs") { get() }
-                                client.newCall(request).execute().body?.string() ?: "No logs returned"
-                            }
-                            logsContent = result
+                            logsContent = LaptopApi.backupLogs()
                         } catch (e: Exception) {
-                            logsContent = "Failed to fetch logs: ${e.message}"
+                            logsContent = "Couldn't fetch the logs: ${e.message}"
                         } finally {
                             isLoadingLogs = false
                         }

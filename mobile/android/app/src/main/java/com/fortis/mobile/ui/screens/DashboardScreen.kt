@@ -1,7 +1,5 @@
 package com.fortis.mobile.ui.screens
 
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,18 +16,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fortis.mobile.ensureTailscaleActive
-import com.fortis.mobile.network.FortisApiClient
+import com.fortis.mobile.data.LaptopApi
 import com.fortis.mobile.ui.FortisViewModel
+import com.fortis.mobile.ui.rememberPhoneBackup
+import com.fortis.mobile.ui.sendClipboardToLaptop
+import com.fortis.mobile.ui.toast
 import com.fortis.mobile.ui.components.*
 import com.fortis.mobile.ui.theme.*
 import com.fortis.mobile.domain.CapabilityManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 
 @Composable
 fun DashboardScreen(
@@ -41,39 +36,21 @@ fun DashboardScreen(
     val context = LocalContext.current
     val activeDevice by viewModel.activeDevice.collectAsState()
 
-    val ip = activeDevice?.ipAddress ?: ""
-
-    // Telemetry state
-    var uptime by remember { mutableStateOf("--") }
-    var cpu by remember { mutableStateOf("--") }
-    var mem by remember { mutableStateOf("--") }
-    var swap by remember { mutableStateOf("--") }
-    var storage by remember { mutableStateOf("--") }
-    var temp by remember { mutableStateOf("--") }
-
-    // Backup readiness state
-    var tsActive by remember { mutableStateOf(false) }
-    var sshActive by remember { mutableStateOf(false) }
-    var storageGb by remember { mutableStateOf("--") }
-    var batteryLevel by remember { mutableStateOf("--") }
-    var batteryOk by remember { mutableStateOf(false) }
-    var storageOk by remember { mutableStateOf(false) }
+    val telemetry by viewModel.telemetry.collectAsState()
+    val readiness by viewModel.readiness.collectAsState()
+    val cpu = telemetry?.cpu ?: "--"
+    val mem = telemetry?.mem ?: "--"
+    val swap = telemetry?.swap ?: "--"
+    val storage = telemetry?.storage ?: "--"
+    val temp = telemetry?.temp ?: "--"
+    val uptime = telemetry?.uptime ?: "--"
 
     // Dialogs
     var showLogsDialog by remember { mutableStateOf(false) }
     var logsContent by remember { mutableStateOf("Loading logs...") }
     var showBackupDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            Toast.makeText(context, "Termux Permission Granted! Try again.", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "Termux RUN_COMMAND permission is required!", Toast.LENGTH_LONG).show()
-        }
-    }
+    val startBackup = rememberPhoneBackup()
 
     // Backup confirmation dialog
     if (showBackupDialog) {
@@ -82,37 +59,7 @@ fun DashboardScreen(
             message = "Are you sure you want to force a laptop backup?",
             onConfirm = {
                 showBackupDialog = false
-                if (ip.isEmpty()) {
-                    Toast.makeText(context, "Set IP/Key in Workspace!", Toast.LENGTH_SHORT).show()
-                    return@FortisConfirmDialog
-                }
-                if (context.checkSelfPermission("com.termux.permission.RUN_COMMAND") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    permissionLauncher.launch("com.termux.permission.RUN_COMMAND")
-                    return@FortisConfirmDialog
-                }
-                try {
-                    val intent = android.content.Intent("com.termux.RUN_COMMAND")
-                    intent.setClassName("com.termux", "com.termux.app.RunCommandService")
-                    intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
-                    intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", "bash /data/data/com.termux/files/home/.local/bin/fortis-mobile start > /data/data/com.termux/files/home/intent.log 2>&1"))
-                    intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
-                    intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "4")
-                    context.startService(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Failed to start Termux: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-
-                coroutineScope.launch {
-                    try {
-                        withContext(Dispatchers.IO) {
-                            val client = FortisApiClient.getClient()
-                            val json = """{"action":"run_backup"}"""
-                            val body = json.toRequestBody("application/json".toMediaType())
-                            val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
-                            client.newCall(request).execute().close()
-                        }
-                    } catch (e: Exception) {}
-                }
+                startBackup()
             },
             onDismiss = { showBackupDialog = false }
         )
@@ -145,55 +92,6 @@ fun DashboardScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             textContentColor = MaterialTheme.colorScheme.onSurface
         )
-    }
-
-    // Auto-refresh telemetry
-    LaunchedEffect(Unit) {
-        if (ip.isNotEmpty()) {
-            while (true) {
-                try {
-                    withContext(Dispatchers.IO) {
-                        val client = FortisApiClient.getClient()
-                        val request = FortisApiClient.buildRequest("/api/v1/telemetry") { get() }
-                        client.newCall(request).execute().use { response ->
-                            val bodyStr = response.body?.string() ?: "{}"
-                            val t = com.fortis.mobile.network.Telemetry.parse(bodyStr)
-                            uptime = t.uptime; cpu = t.cpu; mem = t.mem; swap = t.swap; storage = t.storage; temp = t.temp
-                        }
-                    }
-                } catch (e: Exception) {}
-                delay(5000)
-            }
-        }
-    }
-
-    // Auto-refresh backup readiness
-    LaunchedEffect(Unit) {
-        while (true) {
-            tsActive = ensureTailscaleActive(context)
-
-            sshActive = try {
-                withContext(Dispatchers.IO) {
-                    val socket = java.net.Socket()
-                    socket.connect(java.net.InetSocketAddress("127.0.0.1", 8022), 500)
-                    socket.close()
-                    true
-                }
-            } catch (e: Exception) { false }
-
-            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-            val bytesAvailable = stat.blockSizeLong * stat.availableBlocksLong
-            val gbAvailable = bytesAvailable / (1024 * 1024 * 1024)
-            storageGb = "${gbAvailable} GB"
-            storageOk = gbAvailable > 5
-
-            val bm = context.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
-            val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
-            batteryLevel = "${level}%"
-            batteryOk = level > 20
-
-            delay(5000)
-        }
     }
 
     val scrollState = rememberScrollState()
@@ -273,12 +171,12 @@ fun DashboardScreen(
             ) {
                 FortisStatusChip(
                     label = "Battery",
-                    isHealthy = batteryOk,
+                    isHealthy = readiness?.batteryOk == true,
                     modifier = Modifier.weight(1f)
                 )
                 FortisStatusChip(
                     label = "Storage",
-                    isHealthy = storageOk,
+                    isHealthy = readiness?.storageOk == true,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -289,12 +187,12 @@ fun DashboardScreen(
             ) {
                 FortisStatusChip(
                     label = "Tailscale",
-                    isHealthy = tsActive,
+                    isHealthy = readiness?.tailscale == true,
                     modifier = Modifier.weight(1f)
                 )
                 FortisStatusChip(
                     label = "SSHD",
-                    isHealthy = sshActive,
+                    isHealthy = readiness?.sshd == true,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -337,15 +235,10 @@ fun DashboardScreen(
                             showLogsDialog = true
                             logsContent = "Loading logs..."
                             coroutineScope.launch {
-                                try {
-                                    val result = withContext(Dispatchers.IO) {
-                                        val client = FortisApiClient.getClient()
-                                        val request = FortisApiClient.buildRequest("/api/v1/backup/logs") { get() }
-                                        client.newCall(request).execute().body?.string() ?: "No logs returned"
-                                    }
-                                    logsContent = result
+                                logsContent = try {
+                                    LaptopApi.backupLogs()
                                 } catch (e: Exception) {
-                                    logsContent = "Failed to fetch logs: ${e.message}"
+                                    "Couldn't fetch the logs: ${e.message}"
                                 }
                             }
                         },
@@ -357,30 +250,10 @@ fun DashboardScreen(
                     label = "Clipboard",
                     onClick = {
                         if (activeDevice == null) {
-                            Toast.makeText(context, "Select a device first!", Toast.LENGTH_SHORT).show()
+                            context.toast("Pick a laptop first")
                             return@FortisIconActionButton
                         }
-                        if (!ensureTailscaleActive(context)) return@FortisIconActionButton
-                        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clipData = clipboardManager.primaryClip
-                        if (clipData != null && clipData.itemCount > 0) {
-                            val text = clipData.getItemAt(0).text.toString()
-                            coroutineScope.launch {
-                                try {
-                                    withContext(Dispatchers.IO) {
-                                        val client = FortisApiClient.getClient()
-                                        val body = org.json.JSONObject().put("text", text).toString().toRequestBody("application/json".toMediaType())
-                                        val request = FortisApiClient.buildRequest("/api/v1/clipboard") { post(body) }
-                                        client.newCall(request).execute().close()
-                                    }
-                                    Toast.makeText(context, "Sent to Laptop!", Toast.LENGTH_SHORT).show()
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        } else {
-                            Toast.makeText(context, "Clipboard is empty!", Toast.LENGTH_SHORT).show()
-                        }
+                        coroutineScope.sendClipboardToLaptop(context)
                     },
                     modifier = Modifier.weight(1f)
                 )

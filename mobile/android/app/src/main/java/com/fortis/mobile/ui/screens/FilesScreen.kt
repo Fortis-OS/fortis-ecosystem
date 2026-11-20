@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.provider.OpenableColumns
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -23,33 +22,28 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.fortis.mobile.ensureTailscaleActive
-import com.fortis.mobile.network.FortisApiClient
+import com.fortis.mobile.data.LaptopApi
+import com.fortis.mobile.data.Listing
+import com.fortis.mobile.ui.rememberPhoneBackup
+import com.fortis.mobile.ui.sendClipboardToLaptop
+import com.fortis.mobile.ui.toast
 import com.fortis.mobile.ui.FortisViewModel
 import com.fortis.mobile.ui.components.*
 import com.fortis.mobile.ui.theme.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.MultipartBody
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
-import java.io.InputStream
 
-data class RemoteFile(val name: String, val isDir: Boolean, val size: Long)
 
 @Composable
 fun FilesScreen(viewModel: FortisViewModel) {
     val context = LocalContext.current
     val activeDevice by viewModel.activeDevice.collectAsState()
 
-    val ip = activeDevice?.ipAddress ?: ""
     val coroutineScope = rememberCoroutineScope()
-    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
 
     // File explorer state
-    var currentPath by remember { mutableStateOf("") }
-    var files by remember { mutableStateOf(emptyList<RemoteFile>()) }
+    var listing by remember { mutableStateOf<Listing?>(null) }
+    val currentPath = listing?.path ?: ""
+    val files = listing?.entries ?: emptyList()
     var isLoading by remember { mutableStateOf(false) }
 
     // Upload state
@@ -61,16 +55,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
 
     // Backup dialog
     var showBackupDialog by remember { mutableStateOf(false) }
-
-    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            Toast.makeText(context, "Termux Permission Granted! Try again.", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(context, "Termux RUN_COMMAND permission is required!", Toast.LENGTH_LONG).show()
-        }
-    }
+    val startBackup = rememberPhoneBackup()
 
     if (showBackupDialog) {
         FortisConfirmDialog(
@@ -78,37 +63,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
             message = "Are you sure you want to force a laptop backup?",
             onConfirm = {
                 showBackupDialog = false
-                if (ip.isEmpty()) {
-                    Toast.makeText(context, "Set IP/Key in Workspace!", Toast.LENGTH_SHORT).show()
-                    return@FortisConfirmDialog
-                }
-                if (context.checkSelfPermission("com.termux.permission.RUN_COMMAND") != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                    permissionLauncher.launch("com.termux.permission.RUN_COMMAND")
-                    return@FortisConfirmDialog
-                }
-                try {
-                    val intent = android.content.Intent("com.termux.RUN_COMMAND")
-                    intent.setClassName("com.termux", "com.termux.app.RunCommandService")
-                    intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
-                    intent.putExtra("com.termux.RUN_COMMAND_ARGUMENTS", arrayOf("-c", "bash /data/data/com.termux/files/home/.local/bin/fortis-mobile start > /data/data/com.termux/files/home/intent.log 2>&1"))
-                    intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", false)
-                    intent.putExtra("com.termux.RUN_COMMAND_SESSION_ACTION", "4")
-                    context.startService(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "Failed to start Termux: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-
-                coroutineScope.launch {
-                    try {
-                        withContext(Dispatchers.IO) {
-                            val client = FortisApiClient.getClient()
-                            val json = """{"action":"run_backup"}"""
-                            val body = json.toRequestBody("application/json".toMediaType())
-                            val request = FortisApiClient.buildRequest("/api/v1/actions") { post(body) }
-                            client.newCall(request).execute().close()
-                        }
-                    } catch (e: Exception) {}
-                }
+                startBackup()
             },
             onDismiss = { showBackupDialog = false }
         )
@@ -154,133 +109,58 @@ fun FilesScreen(viewModel: FortisViewModel) {
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
-        if (uris.isNotEmpty()) {
-            if (ip.isEmpty()) return@rememberLauncherForActivityResult
-            if (!ensureTailscaleActive(context)) return@rememberLauncherForActivityResult
-            totalFiles = uris.size
-            currentFileIndex = 0
-            isUploading = true
-
-            coroutineScope.launch {
+        if (uris.isEmpty() || activeDevice == null) return@rememberLauncherForActivityResult
+        if (!ensureTailscaleActive(context)) return@rememberLauncherForActivityResult
+        totalFiles = uris.size
+        currentFileIndex = 0
+        isUploading = true
+        coroutineScope.launch {
+            var sent = 0
+            val failed = mutableListOf<String>()
+            for (uri in uris) {
+                val fileName = getFileName(context, uri)
+                currentFileIndex++
+                currentFileName = fileName
+                uploadProgress = 0f
                 try {
-                    withContext(Dispatchers.IO) {
-                        val client = FortisApiClient.getClient()
-                        var successCount = 0
-                        var failCount = 0
-
-                        for (uri in uris) {
-                            try {
-                                val fileName = getFileName(context, uri)
-                                val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-
-                                var fileSize = 0L
-                                context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                                    if (cursor.moveToFirst()) {
-                                        fileSize = cursor.getLong(0)
-                                    }
-                                }
-
-                                withContext(Dispatchers.Main) {
-                                    currentFileIndex++
-                                    currentFileName = fileName
-                                    uploadProgress = 0f
-                                }
-
-                                if (inputStream != null) {
-                                    val streamBody = object : okhttp3.RequestBody() {
-                                        override fun contentType() = "application/octet-stream".toMediaType()
-                                        override fun writeTo(sink: okio.BufferedSink) {
-                                            inputStream.use { stream ->
-                                                val buffer = ByteArray(8192)
-                                                var bytesRead: Int
-                                                var totalBytesRead = 0L
-                                                while (stream.read(buffer).also { bytesRead = it } != -1) {
-                                                    sink.write(buffer, 0, bytesRead)
-                                                    totalBytesRead += bytesRead
-                                                    val progress = if (fileSize > 0) totalBytesRead.toFloat() / fileSize else 0f
-                                                    if (progress - uploadProgress > 0.01f || progress == 1f) {
-                                                        uploadProgress = progress
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    val requestBody = MultipartBody.Builder()
-                                        .setType(MultipartBody.FORM)
-                                        .addFormDataPart("file", fileName, streamBody)
-                                        .build()
-
-                                    val request = FortisApiClient.buildRequest("/api/v1/files/drop?dest=drop") { post(requestBody) }
-
-                                    client.newCall(request).execute().close()
-                                    successCount++
-                                }
-                            } catch (e: Exception) {
-                                failCount++
-                            }
-                        }
-                        withContext(Dispatchers.Main) {
-                            isUploading = false
-                            Toast.makeText(context, "Shared $successCount files. Failed $failCount.", Toast.LENGTH_LONG).show()
-                        }
-                    }
+                    LaptopApi.uploadFile(
+                        name = fileName,
+                        size = fileSize(context, uri),
+                        open = { context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("can't read $fileName") },
+                        onProgress = { uploadProgress = it },
+                    )
+                    sent++
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Upload failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    failed += "$fileName (${e.message})"
                 }
             }
+            isUploading = false
+            context.toast(
+                if (failed.isEmpty()) "Sent $sent file(s) to the laptop"
+                else "Sent $sent, failed ${failed.size}: ${failed.joinToString()}",
+                long = failed.isNotEmpty(),
+            )
         }
     }
 
     fun fetchFiles(path: String) {
-        if (ip.isEmpty()) return
+        if (activeDevice == null) return
         isLoading = true
         coroutineScope.launch {
             try {
-                withContext(Dispatchers.IO) {
-                    val client = FortisApiClient.getClient()
-                    val q = if (path.isEmpty()) "" else "?path=" + android.net.Uri.encode(path)
-                    val request = FortisApiClient.buildRequest("/api/v1/files/list$q") { get() }
-                    val response = client.newCall(request).execute()
-                    val responseBody = response.body?.string() ?: ""
-                    if (response.isSuccessful) {
-                        val jsonObj = JSONObject(responseBody)
-                        val returnedPath = jsonObj.optString("path", "")
-                        val filesArray = jsonObj.optJSONArray("entries")
-                        val newList = mutableListOf<RemoteFile>()
-                        if (filesArray != null) {
-                            for (i in 0 until filesArray.length()) {
-                                val fObj = filesArray.getJSONObject(i)
-                                newList.add(RemoteFile(fObj.getString("name"), fObj.getBoolean("is_dir"), fObj.getLong("size")))
-                            }
-                        }
-                        newList.sortWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
-
-                        withContext(Dispatchers.Main) {
-                            currentPath = returnedPath
-                            files = newList
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(context, "Error: ${response.code}", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    response.close()
-                }
+                listing = LaptopApi.listFiles(path)
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Network Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                context.toast("Couldn't open the folder: ${e.message}")
             } finally {
                 isLoading = false
             }
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (currentPath.isEmpty()) {
-            fetchFiles("")
-        }
+    // Load the default folder, and again whenever the active laptop changes
+    LaunchedEffect(activeDevice?.uuid) {
+        listing = null
+        fetchFiles("")
     }
 
     Column(
@@ -305,29 +185,10 @@ fun FilesScreen(viewModel: FortisViewModel) {
                 text = "CLIPBOARD",
                 onClick = {
                     if (activeDevice == null) {
-                        Toast.makeText(context, "Select a device first!", Toast.LENGTH_SHORT).show()
+                        context.toast("Pick a laptop first")
                         return@FortisCompactActionButton
                     }
-                    if (!ensureTailscaleActive(context)) return@FortisCompactActionButton
-                    val clipData = clipboardManager.primaryClip
-                    if (clipData != null && clipData.itemCount > 0) {
-                        val text = clipData.getItemAt(0).text.toString()
-                        coroutineScope.launch {
-                            try {
-                                withContext(Dispatchers.IO) {
-                                    val client = FortisApiClient.getClient()
-                                    val body = org.json.JSONObject().put("text", text).toString().toRequestBody("application/json".toMediaType())
-                                    val request = FortisApiClient.buildRequest("/api/v1/clipboard") { post(body) }
-                                    client.newCall(request).execute().close()
-                                }
-                                Toast.makeText(context, "Sent to Laptop!", Toast.LENGTH_SHORT).show()
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } else {
-                        Toast.makeText(context, "Clipboard is empty!", Toast.LENGTH_SHORT).show()
-                    }
+                    coroutineScope.sendClipboardToLaptop(context)
                 },
                 modifier = Modifier.weight(1f)
             )
@@ -342,11 +203,8 @@ fun FilesScreen(viewModel: FortisViewModel) {
         FortisCard(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(
-                    onClick = {
-                        val parent = currentPath.substringBeforeLast("/", "")
-                        fetchFiles(if (parent.isEmpty()) "/" else parent)
-                    },
-                    enabled = currentPath.isNotEmpty() && currentPath != "/" && !isLoading,
+                    onClick = { listing?.parent?.let { fetchFiles(it) } },
+                    enabled = listing?.parent != null && !isLoading,
                     shape = RoundedCornerShape(FortisSpacing.buttonCorner),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.onSurface,
@@ -387,19 +245,20 @@ fun FilesScreen(viewModel: FortisViewModel) {
                         .fillMaxWidth()
                         .padding(vertical = 3.dp)
                         .clickable {
+                            val filePath = listing?.childPath(file) ?: return@clickable
                             if (file.isDir) {
-                                val nextPath = if (currentPath.endsWith("/")) currentPath + file.name else currentPath + "/" + file.name
-                                fetchFiles(nextPath)
+                                fetchFiles(filePath)
                             } else {
-                                val filePath = if (currentPath.endsWith("/")) currentPath + file.name else currentPath + "/" + file.name
-                                Toast.makeText(context, "Downloading ${file.name}...", Toast.LENGTH_SHORT).show()
+                                context.toast("Downloading ${file.name}…")
                                 coroutineScope.launch {
-                                    val msg = try {
-                                        "Saved to " + withContext(Dispatchers.IO) { com.fortis.mobile.network.Downloads.download(context, filePath, file.name) }
-                                    } catch (e: Exception) {
-                                        "Download failed: ${e.message}"
-                                    }
-                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    context.toast(
+                                        try {
+                                            "Saved to " + LaptopApi.download(context, filePath, file.name)
+                                        } catch (e: Exception) {
+                                            "Download failed: ${e.message}"
+                                        },
+                                        long = true,
+                                    )
                                 }
                             }
                         },
@@ -440,6 +299,11 @@ fun FilesScreen(viewModel: FortisViewModel) {
         }
     }
 }
+
+private fun fileSize(context: Context, uri: Uri): Long =
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+        if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L
+    } ?: 0L
 
 private fun getFileName(context: Context, uri: Uri): String {
     var result: String? = null
