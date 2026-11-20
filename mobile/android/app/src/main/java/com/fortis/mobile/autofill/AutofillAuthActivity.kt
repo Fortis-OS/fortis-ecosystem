@@ -38,7 +38,7 @@ class AutofillAuthActivity : FragmentActivity() {
         val where = form.webUrl?.substringAfter("://") ?: appLabel(form.packageName)
         setContent {
             FortisMobileTheme {
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                com.fortis.mobile.ui.components.FrostBackground {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(message ?: "Unlocking Fortis for $where…", style = MaterialTheme.typography.titleMedium)
                         if (message != null) { Spacer(Modifier.height(16.dp)); TextButton(onClick = { finish() }) { Text("Close") } }

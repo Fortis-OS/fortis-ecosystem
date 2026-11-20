@@ -43,6 +43,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
+import com.fortis.mobile.ui.theme.FrostMono
 
 private const val MAX_STREAM_MS = 60 * 60 * 1000L
 private const val NOTIF_ID = 60
@@ -148,15 +149,15 @@ fun WebcamScreen(device: Device, onBack: () -> Unit) {
 
     Scaffold(topBar = {
         TopAppBar(
-            title = { Text("WEBCAM — ${device.name}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleMedium) },
-            navigationIcon = { TextButton(onClick = onBack) { Text("< BACK", fontFamily = FontFamily.Monospace) } },
+            title = { Text("WEBCAM — ${device.name}", fontFamily = FrostMono, style = MaterialTheme.typography.titleMedium) },
+            navigationIcon = { TextButton(onClick = onBack) { Text("< BACK", fontFamily = FrostMono) } },
         )
     }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(FortisSpacing.screenPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when {
                 !available -> Text("Webcam is off on this laptop. Set webcam.enabled = true in agent.toml and load v4l2loopback (see docs/installation).",
-                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodyMedium)
-                !hasPerm -> Button(onClick = { askPerm.launch(Manifest.permission.CAMERA) }) { Text("ALLOW CAMERA", fontFamily = FontFamily.Monospace) }
+                    fontFamily = FrostMono, style = MaterialTheme.typography.bodyMedium)
+                !hasPerm -> Button(onClick = { askPerm.launch(Manifest.permission.CAMERA) }) { Text("ALLOW CAMERA", fontFamily = FrostMono) }
                 else -> {
                     AndroidView({ previewView }, Modifier.fillMaxWidth().weight(1f))
                     val s = server
@@ -169,12 +170,12 @@ fun WebcamScreen(device: Device, onBack: () -> Unit) {
                                 (if (s.clientConnected) "● Streaming to ${device.name}" else "Waiting for ${device.name}…") + " · stops in ${left} min"
                             }
                         },
-                        fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FrostMono, style = MaterialTheme.typography.bodySmall,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (s == null) Button(onClick = { start() }, Modifier.weight(1f)) { Text("START", fontFamily = FontFamily.Monospace) }
-                        else OutlinedButton(onClick = { stop("Stopped") }, Modifier.weight(1f)) { Text("STOP", fontFamily = FontFamily.Monospace) }
-                        OutlinedButton(onClick = { front = !front }, Modifier.weight(1f)) { Text(if (front) "BACK CAM" else "FRONT CAM", fontFamily = FontFamily.Monospace) }
+                        if (s == null) Button(onClick = { start() }, Modifier.weight(1f)) { Text("START", fontFamily = FrostMono) }
+                        else OutlinedButton(onClick = { stop("Stopped") }, Modifier.weight(1f)) { Text("STOP", fontFamily = FrostMono) }
+                        OutlinedButton(onClick = { front = !front }, Modifier.weight(1f)) { Text(if (front) "BACK CAM" else "FRONT CAM", fontFamily = FrostMono) }
                     }
                 }
             }

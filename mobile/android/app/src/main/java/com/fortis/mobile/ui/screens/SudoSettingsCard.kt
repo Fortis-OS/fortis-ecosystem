@@ -26,6 +26,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.fortis.mobile.service.EventsService
 import com.fortis.mobile.ui.components.FortisSpacing
+import com.fortis.mobile.ui.theme.FrostMono
 
 /** Sudo approvals on/off plus the phone settings they need (docs/deployment §5). */
 @Composable
@@ -51,7 +52,7 @@ fun SudoSettingsCard() {
         Column(Modifier.padding(FortisSpacing.cardPadding)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Sudo approvals", style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace)
+                    Text("Sudo approvals", style = MaterialTheme.typography.titleMedium, fontFamily = FrostMono)
                     Text(if (!enabled) "Off — laptops ask for the password" else "Connected to ${online.size} laptop(s)",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -81,7 +82,7 @@ fun SudoSettingsCard() {
 private fun Fix(text: String, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("⚠ $text", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        TextButton(onClick = { runCatching(onClick) }) { Text("FIX", fontFamily = FontFamily.Monospace) }
+        TextButton(onClick = { runCatching(onClick) }) { Text("FIX", fontFamily = FrostMono) }
     }
 }
 

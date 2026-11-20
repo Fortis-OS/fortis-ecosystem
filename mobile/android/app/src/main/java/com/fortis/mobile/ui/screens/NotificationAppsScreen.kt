@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
 import com.fortis.mobile.NotificationMirror
 import com.fortis.mobile.ui.components.*
+import com.fortis.mobile.ui.theme.FrostMono
 
 private data class AppRow(val pkg: String, val label: String)
 
@@ -35,11 +36,11 @@ fun NotificationAppsScreen(onBack: () -> Unit) {
     var allowed by remember { mutableStateOf(NotificationMirror.allowed(context)) }
     val hasAccess = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(FortisSpacing.screenPadding)) {
-        Text("NOTIFICATIONS", style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace,
+    Column(Modifier.fillMaxSize().padding(FortisSpacing.screenPadding)) {
+        Text("NOTIFICATIONS", style = MaterialTheme.typography.headlineLarge, fontFamily = FrostMono,
             color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(bottom = 8.dp))
         Text("Ticked apps' notifications appear on the laptop. Nothing is sent until you tick an app.",
-            fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+            fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
         if (!hasAccess) {
             FortisActionButton(text = "GRANT NOTIFICATION ACCESS", isPrimary = true, onClick = {
                 context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
@@ -48,7 +49,7 @@ fun NotificationAppsScreen(onBack: () -> Unit) {
         LazyColumn(Modifier.weight(1f)) {
             items(apps, key = { it.pkg }) { app ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(app.label, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+                    Text(app.label, fontFamily = FrostMono, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
                     Switch(checked = app.pkg in allowed, onCheckedChange = { on ->
                         NotificationMirror.setAllowed(context, app.pkg, on)
                         allowed = NotificationMirror.allowed(context)

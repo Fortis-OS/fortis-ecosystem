@@ -105,7 +105,7 @@ fun MonitorScreen(viewModel: FortisViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            
             .padding(FortisSpacing.screenPadding)
             .verticalScroll(scrollState)
     ) {
@@ -137,13 +137,13 @@ fun MonitorScreen(viewModel: FortisViewModel) {
                     Text(
                         "Battery > 20%",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         "$batteryLevel ${if (batteryOk) "✓" else "✗"}",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = if (batteryOk) StatusGreen else StatusRed
                     )
                 }
@@ -155,13 +155,13 @@ fun MonitorScreen(viewModel: FortisViewModel) {
                     Text(
                         "Free Space > 5GB",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         "$storageGb ${if (storageOk) "✓" else "✗"}",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = if (storageOk) StatusGreen else StatusRed
                     )
                 }
@@ -173,13 +173,13 @@ fun MonitorScreen(viewModel: FortisViewModel) {
                     Text(
                         "Tailscale Connected",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         if (tsActive) "RUNNING ✓" else "STOPPED ✗",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = if (tsActive) StatusGreen else StatusRed
                     )
                 }
@@ -191,13 +191,13 @@ fun MonitorScreen(viewModel: FortisViewModel) {
                     Text(
                         "SSHD Running",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         if (sshActive) "RUNNING ✓" else "STOPPED ✗",
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = if (sshActive) StatusGreen else StatusRed
                     )
                 }
@@ -237,7 +237,7 @@ fun MonitorScreen(viewModel: FortisViewModel) {
                 Text(
                     text = logsContent,
                     style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FrostMono,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }

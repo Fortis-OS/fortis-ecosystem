@@ -14,12 +14,23 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.fortis.mobile.ui.components.FrostBackground
+import com.fortis.mobile.ui.theme.Frost
+import com.fortis.mobile.ui.theme.FrostSans
 import androidx.compose.ui.text.font.FontFamily
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fortis.mobile.ui.FortisViewModel
 import com.fortis.mobile.ui.RemoteInputScreen
 import com.fortis.mobile.ui.screens.*
 import com.fortis.mobile.ui.theme.FortisMobileTheme
+import com.fortis.mobile.ui.theme.FrostMono
 
 class MainActivity : FragmentActivity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -57,84 +68,91 @@ class MainActivity : FragmentActivity() {
     }
 }
 
+/** Routes for the screens that open on top of the tabs. */
+private object Routes {
+    const val MAIN = "main"
+    const val NOTIFICATION_APPS = "notification-apps"
+    const val REMOTE_INPUT = "remote-input"
+    const val WEBCAM = "webcam"
+    const val VAULT = "vault"
+    const val AUTHENTICATOR = "authenticator"
+}
+
 @Composable
 fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
+    val nav = rememberNavController()
     val activeDevice by viewModel.activeDevice.collectAsState()
 
-    // If no active device, show Device Selection
-    if (activeDevice == null) {
-        DevicesScreen(viewModel = viewModel)
-        return
+    FrostBackground {
+        // keep every screen clear of the status bar and the gesture bar
+        NavHost(
+            navController = nav,
+            startDestination = Routes.MAIN,
+            modifier = Modifier.statusBarsPadding().navigationBarsPadding(),
+        ) {
+            composable(Routes.MAIN) {
+                // No laptop chosen yet: the laptop list (pairing, sudo setup)
+                if (activeDevice == null) DevicesScreen(viewModel = viewModel)
+                else MainTabs(viewModel = viewModel, open = { nav.navigate(it) })
+            }
+            composable(Routes.NOTIFICATION_APPS) {
+                NotificationAppsScreen(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.REMOTE_INPUT) {
+                val device = activeDevice
+                if (device == null) LaunchedEffect(Unit) { nav.popBackStack() }
+                else RemoteInputScreen(device = device, onNavigateBack = { nav.popBackStack() })
+            }
+            composable(Routes.WEBCAM) {
+                val device = activeDevice
+                if (device == null) LaunchedEffect(Unit) { nav.popBackStack() }
+                else com.fortis.mobile.webcam.WebcamScreen(device = device, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.VAULT) {
+                com.fortis.mobile.encrypt.VaultScreen(viewModel = viewModel, onBack = { nav.popBackStack() })
+            }
+            composable(Routes.AUTHENTICATOR) {
+                com.fortis.mobile.encrypt.AuthenticatorScreen(viewModel = viewModel, onBack = { nav.popBackStack() })
+            }
+        }
     }
+}
 
-    // Full-screen overlay states
-    var showNotifApps by remember { mutableStateOf(false) }
-    var showRemoteInput by remember { mutableStateOf(false) }
-    var showWebcam by remember { mutableStateOf(false) }
-    var showVault by remember { mutableStateOf(false) }
-    var showAuthenticator by remember { mutableStateOf(false) }
-
-    if (showNotifApps) {
-        NotificationAppsScreen(onBack = { showNotifApps = false })
-        return
-    }
-
-    if (showRemoteInput && activeDevice != null) {
-        RemoteInputScreen(device = activeDevice!!, onNavigateBack = { showRemoteInput = false })
-        return
-    }
-
-    if (showWebcam && activeDevice != null) {
-        com.fortis.mobile.webcam.WebcamScreen(device = activeDevice!!, onBack = { showWebcam = false })
-        return
-    }
-
-    if (showVault) {
-        com.fortis.mobile.encrypt.VaultScreen(viewModel = viewModel, onBack = { showVault = false })
-        return
-    }
-
-    if (showAuthenticator) {
-        com.fortis.mobile.encrypt.AuthenticatorScreen(viewModel = viewModel, onBack = { showAuthenticator = false })
-        return
-    }
-
-    // Bottom navigation state
-    var selectedTab by remember { mutableStateOf(0) }
-
+@Composable
+private fun MainTabs(viewModel: FortisViewModel, open: (String) -> Unit) {
+    // survives opening a sub-screen and coming back
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = listOf(
-        Triple("Dashboard", Icons.Default.Dashboard, "Dashboard"),
-        Triple("Control", Icons.Default.SettingsRemote, "Control"),
-        Triple("Files", Icons.Default.Folder, "Files"),
-        Triple("Monitor", Icons.Default.MonitorHeart, "Monitor"),
-        Triple("More", Icons.Default.MoreHoriz, "More")
+        "Dashboard" to Icons.Default.Dashboard,
+        "Control" to Icons.Default.SettingsRemote,
+        "Files" to Icons.Default.Folder,
+        "Monitor" to Icons.Default.MonitorHeart,
+        "More" to Icons.Default.MoreHoriz,
     )
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),   // the NavHost already keeps clear of the system bars
+        containerColor = Color.Transparent,
+        contentColor = Frost.text,
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface
+                containerColor = Frost.sheet,
+                contentColor = Frost.text,
+                tonalElevation = 0.dp,
+                windowInsets = WindowInsets(0, 0, 0, 0),
             ) {
-                tabs.forEachIndexed { index, (label, icon, _) ->
+                tabs.forEachIndexed { index, (label, icon) ->
                     NavigationBarItem(
                         icon = { Icon(icon, contentDescription = label) },
-                        label = {
-                            Text(
-                                label.uppercase(),
-                                fontFamily = FontFamily.Monospace,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        },
+                        label = { Text(label, fontFamily = FrostSans, fontSize = 12.sp) },
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            indicatorColor = MaterialTheme.colorScheme.surfaceVariant
+                            selectedIconColor = Frost.accent,
+                            selectedTextColor = Frost.accent,
+                            unselectedIconColor = Frost.muted,
+                            unselectedTextColor = Frost.muted,
+                            indicatorColor = Frost.accentSoft,
                         )
                     )
                 }
@@ -149,22 +167,22 @@ fun FortisMobileApp(viewModel: FortisViewModel = viewModel()) {
             when (selectedTab) {
                 0 -> DashboardScreen(
                     viewModel = viewModel,
-                    onOpenRemoteInput = { showRemoteInput = true },
+                    onOpenRemoteInput = { open(Routes.REMOTE_INPUT) },
                     onOpenFiles = { selectedTab = 2 },
                     onSwitchDevice = { viewModel.clearActiveDevice() }
                 )
                 1 -> ControlScreen(
                     viewModel = viewModel,
-                    onOpenRemoteInput = { showRemoteInput = true },
-                    onOpenWebcam = { showWebcam = true }
+                    onOpenRemoteInput = { open(Routes.REMOTE_INPUT) },
+                    onOpenWebcam = { open(Routes.WEBCAM) }
                 )
                 2 -> FilesScreen(viewModel = viewModel)
                 3 -> MonitorScreen(viewModel = viewModel)
                 4 -> MoreScreen(
                     viewModel = viewModel,
-                    onOpenNotificationApps = { showNotifApps = true },
-                    onOpenVault = { showVault = true },
-                    onOpenAuthenticator = { showAuthenticator = true }
+                    onOpenNotificationApps = { open(Routes.NOTIFICATION_APPS) },
+                    onOpenVault = { open(Routes.VAULT) },
+                    onOpenAuthenticator = { open(Routes.AUTHENTICATOR) }
                 )
             }
         }

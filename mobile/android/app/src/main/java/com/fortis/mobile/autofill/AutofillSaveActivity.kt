@@ -35,7 +35,7 @@ class AutofillSaveActivity : FragmentActivity() {
             FortisMobileTheme {
                 var status by remember { mutableStateOf<String?>(null) }
                 var busy by remember { mutableStateOf(false) }
-                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                com.fortis.mobile.ui.components.FrostBackground {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Save to Fortis?", style = MaterialTheme.typography.headlineSmall)
                         Text("Site/app: $where")

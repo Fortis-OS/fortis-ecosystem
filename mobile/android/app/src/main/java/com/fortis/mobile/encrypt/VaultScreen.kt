@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import com.fortis.mobile.ui.theme.FrostMono
 
 // ---------------------------------------------------------------- shared
 
@@ -60,7 +61,7 @@ private fun SecureWindow() {
 private fun Title(text: String, onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onBackground) }
-        Text(text, style = MaterialTheme.typography.headlineMedium, fontFamily = FontFamily.Monospace,
+        Text(text, style = MaterialTheme.typography.headlineMedium, fontFamily = FrostMono,
             color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
         actions()
     }
@@ -68,9 +69,9 @@ private fun Title(text: String, onBack: (() -> Unit)? = null, actions: @Composab
 
 @Composable
 private fun Screen(content: @Composable ColumnScope.() -> Unit) =
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(FortisSpacing.screenPadding), content = content)
+    Column(Modifier.fillMaxSize().padding(FortisSpacing.screenPadding), content = content)
 
-private fun mono() = FontFamily.Monospace
+private fun mono() = FrostMono
 
 /**
  * Shows [unlocked] only when the phone vault is set up and unlocked; otherwise

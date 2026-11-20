@@ -56,12 +56,12 @@ fun DevicesScreen(viewModel: FortisViewModel) {
         )
     }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(FortisSpacing.screenPadding)) {
-        Text("LAPTOPS", style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace,
+    Column(Modifier.fillMaxSize().padding(FortisSpacing.screenPadding)) {
+        Text("LAPTOPS", style = MaterialTheme.typography.headlineLarge, fontFamily = FrostMono,
             color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(bottom = 24.dp))
         if (devices.isEmpty()) {
             Text("No laptop paired yet. On the laptop run:\n\nfortis pair\n\nthen tap PAIR LAPTOP and scan the QR code.",
-                fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (devices.isNotEmpty()) SudoSettingsCard()
         LazyColumn(Modifier.weight(1f)) {
@@ -78,7 +78,7 @@ fun DevicesScreen(viewModel: FortisViewModel) {
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(device.name, style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Monospace,
+                                Text(device.name, style = MaterialTheme.typography.titleLarge, fontFamily = FrostMono,
                                     color = MaterialTheme.colorScheme.onSurface)
                                 if (device.isVaultLaptop) {
                                     Spacer(Modifier.width(8.dp))
@@ -86,10 +86,10 @@ fun DevicesScreen(viewModel: FortisViewModel) {
                                 }
                             }
                             Text("${device.ipAddress}:${device.port}", style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (!device.isVaultLaptop) {
                                 TextButton(onClick = { viewModel.makeVaultLaptop(device) }, contentPadding = PaddingValues(0.dp)) {
-                                    Text("Use for vault sync", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelSmall)
+                                    Text("Use for vault sync", fontFamily = FrostMono, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
@@ -153,29 +153,29 @@ fun PairScreen(viewModel: FortisViewModel, firstLaptop: Boolean, onDone: () -> U
         focusedBorderColor = MaterialTheme.colorScheme.primary, unfocusedBorderColor = MaterialTheme.colorScheme.outline,
         focusedContainerColor = MaterialTheme.colorScheme.surface, unfocusedContainerColor = MaterialTheme.colorScheme.surface,
     )
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(FortisSpacing.screenPadding).verticalScroll(rememberScrollState())) {
-        Text("PAIR LAPTOP", style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace,
+    Column(Modifier.fillMaxSize().padding(FortisSpacing.screenPadding).verticalScroll(rememberScrollState())) {
+        Text("PAIR LAPTOP", style = MaterialTheme.typography.headlineLarge, fontFamily = FrostMono,
             color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.padding(bottom = 12.dp))
         Text("On the laptop run `fortis pair`. Scan its QR code, or type the code and the laptop's Tailscale address.",
-            fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 20.dp))
+            fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 20.dp))
         FortisActionButton(text = "SCAN QR CODE", isPrimary = true, enabled = !busy, onClick = {
             scanner.launch(ScanOptions().setPrompt("Scan the code from `fortis pair`").setBeepEnabled(false).setOrientationLocked(false))
         })
-        Text("— or enter it —", fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Text("— or enter it —", fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 16.dp))
-        OutlinedTextField(host, { host = it.trim() }, label = { Text("Laptop Tailscale IP (100.x.y.z)", fontFamily = FontFamily.Monospace) },
+        OutlinedTextField(host, { host = it.trim() }, label = { Text("Laptop Tailscale IP (100.x.y.z)", fontFamily = FrostMono) },
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), colors = fieldColors,
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
-        OutlinedTextField(code, { code = it }, label = { Text("Pairing code (XXXX-XXXX-XX)", fontFamily = FontFamily.Monospace) },
+        OutlinedTextField(code, { code = it }, label = { Text("Pairing code (XXXX-XXXX-XX)", fontFamily = FrostMono) },
             singleLine = true, colors = fieldColors, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
-        OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = { Text("Port", fontFamily = FontFamily.Monospace) },
+        OutlinedTextField(port, { port = it.filter(Char::isDigit).take(5) }, label = { Text("Port", fontFamily = FrostMono) },
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), colors = fieldColors,
             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp))
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
             Checkbox(checked = vaultLaptop, onCheckedChange = { vaultLaptop = it })
-            Text("Sync my password vault with this laptop", fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onBackground)
+            Text("Sync my password vault with this laptop", fontFamily = FrostMono, color = MaterialTheme.colorScheme.onBackground)
         }
-        error?.let { Text(it, color = StatusRed, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 8.dp)) }
+        error?.let { Text(it, color = StatusRed, fontFamily = FrostMono, modifier = Modifier.padding(vertical = 8.dp)) }
         FortisActionButton(text = if (busy) "PAIRING…" else "PAIR", isPrimary = true, isLoading = busy, enabled = !busy, onClick = {
             val p = port.toIntOrNull() ?: 8023
             when {
@@ -190,11 +190,11 @@ fun PairScreen(viewModel: FortisViewModel, firstLaptop: Boolean, onDone: () -> U
 
 @Composable
 private fun PairedScreen(r: PairingResult, onDone: () -> Unit) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(FortisSpacing.screenPadding)) {
-        Text("PAIRED", style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace,
+    Column(Modifier.fillMaxSize().padding(FortisSpacing.screenPadding)) {
+        Text("PAIRED", style = MaterialTheme.typography.headlineLarge, fontFamily = FrostMono,
             color = StatusGreen, modifier = Modifier.padding(bottom = 16.dp))
         Text("Check these match what the laptop printed. If anything differs, forget this laptop and pair again.",
-            fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
+            fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
         FortisCard(Modifier.fillMaxWidth()) {
             FpRow("Laptop", r.device.name)
             FpRow("Agent key", r.agentFp)
@@ -203,7 +203,7 @@ private fun PairedScreen(r: PairingResult, onDone: () -> Unit) {
         }
         Spacer(Modifier.height(16.dp))
         Text("To approve sudo from this phone, run on the laptop:\nsudo fortis pam-enroll",
-            fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))
         FortisActionButton(text = "DONE", isPrimary = true, onClick = onDone)
     }
@@ -212,7 +212,7 @@ private fun PairedScreen(r: PairingResult, onDone: () -> Unit) {
 @Composable
 private fun FpRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Text(label, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(120.dp))
-        Text(value, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Text(label, fontFamily = FrostMono, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(120.dp))
+        Text(value, fontFamily = FrostMono, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
     }
 }

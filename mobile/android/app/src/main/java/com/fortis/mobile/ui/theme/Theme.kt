@@ -4,21 +4,30 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
+// Frost on Material 3: red for actions and selection, near-black page,
+// solid dark surfaces for Material's own dialogs and menus.
 private val FortisColorScheme = darkColorScheme(
-    primary = White,
-    onPrimary = Black,
-    secondary = MediumGray,
-    onSecondary = White,
-    tertiary = MediumGray,
-    onTertiary = White,
-    background = SurfaceDark,
-    onBackground = TextPrimary,
+    primary = Frost.accent,
+    onPrimary = Frost.textOnAccent,
+    primaryContainer = Frost.accentSoft,
+    onPrimaryContainer = Frost.accent,
+    secondary = Frost.muted,
+    onSecondary = Frost.text,
+    tertiary = Frost.muted,
+    onTertiary = Frost.text,
+    background = Frost.page,
+    onBackground = Frost.text,
     surface = SurfaceCard,
-    onSurface = TextPrimary,
+    onSurface = Frost.text,
     surfaceVariant = SurfaceElevated,
-    onSurfaceVariant = TextSecondary,
-    outline = BorderSubtle,
-    outlineVariant = BorderSubtle
+    onSurfaceVariant = Frost.muted,
+    surfaceContainer = SurfaceCard,
+    surfaceContainerHigh = SurfaceElevated,
+    surfaceContainerHighest = SurfaceElevated,
+    outline = Frost.border,
+    outlineVariant = Frost.faint,
+    error = Frost.error,
+    onError = Frost.page,
 )
 
 @Composable

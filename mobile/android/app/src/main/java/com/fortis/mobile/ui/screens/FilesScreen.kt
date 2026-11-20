@@ -118,7 +118,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
         AlertDialog(
             onDismissRequest = { /* Prevent dismissing */ },
             title = {
-                Text("Uploading Files...", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleLarge)
+                Text("Uploading Files...", fontFamily = FrostMono, style = MaterialTheme.typography.titleLarge)
             },
             text = {
                 Column {
@@ -126,7 +126,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
                         "File $currentFileIndex of $totalFiles: $currentFileName",
                         maxLines = 1,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -140,7 +140,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
                     Text(
                         "${(uploadProgress * 100).toInt()}%",
                         style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -286,7 +286,7 @@ fun FilesScreen(viewModel: FortisViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            
             .padding(FortisSpacing.screenPadding)
     ) {
         // ─── Action Buttons Row ──────────────────────────────────
@@ -357,13 +357,13 @@ fun FilesScreen(viewModel: FortisViewModel) {
                     ),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    Text("UP", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
+                    Text("UP", fontFamily = FrostMono, style = MaterialTheme.typography.labelMedium)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     currentPath,
                     style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FrostMono,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
@@ -422,14 +422,14 @@ fun FilesScreen(viewModel: FortisViewModel) {
                             Text(
                                 file.name,
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FrostMono,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             if (!file.isDir) {
                                 Text(
                                     "${file.size / 1024} KB",
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = FrostMono,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }

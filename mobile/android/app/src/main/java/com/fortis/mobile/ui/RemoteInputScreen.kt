@@ -27,6 +27,7 @@ import com.fortis.mobile.network.InputSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import com.fortis.mobile.ui.theme.FrostMono
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -158,7 +159,7 @@ fun RemoteInputScreen(
                 title = {
                     Text(
                         "REMOTE_INPUT — ${device.name}",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -167,7 +168,7 @@ fun RemoteInputScreen(
                     TextButton(onClick = onNavigateBack) {
                         Text(
                             "< BACK",
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FrostMono,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -202,7 +203,7 @@ fun RemoteInputScreen(
                     label = {
                         Text(
                             "Type here to send text...",
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FrostMono,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
@@ -228,7 +229,7 @@ fun RemoteInputScreen(
                         contentColor = MaterialTheme.colorScheme.onPrimary
                     )
                 ) {
-                    Text("Send", fontFamily = FontFamily.Monospace)
+                    Text("Send", fontFamily = FrostMono)
                 }
             }
 
@@ -240,7 +241,7 @@ fun RemoteInputScreen(
                 Text(
                     if (useBluetooth) "Mode: Bluetooth keyboard & mouse" else "Mode: network (Tailscale)",
                     modifier = Modifier.weight(1f),
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FrostMono,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -252,7 +253,7 @@ fun RemoteInputScreen(
             }
             if (!networkAvailable) {
                 Text("Network mode is off on this laptop (input.enabled in agent.toml, xdotool/ydotool).",
-                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FrostMono, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (!useBluetooth) {
@@ -264,19 +265,19 @@ fun RemoteInputScreen(
                             else -> netStatus ?: "Not connected"
                         },
                         modifier = Modifier.weight(1f),
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         style = MaterialTheme.typography.bodySmall,
                         color = if (sessionId != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (sessionId == null) Button(onClick = { startNetwork() }, enabled = !starting) { Text("START", fontFamily = FontFamily.Monospace) }
-                    else OutlinedButton(onClick = { stopNetwork(); netStatus = "Stopped" }) { Text("STOP", fontFamily = FontFamily.Monospace) }
+                    if (sessionId == null) Button(onClick = { startNetwork() }, enabled = !starting) { Text("START", fontFamily = FrostMono) }
+                    else OutlinedButton(onClick = { stopNetwork(); netStatus = "Stopped" }) { Text("STOP", fontFamily = FrostMono) }
                 }
             }
 
             Text(
                 "TRACKPAD_AREA",
                 style = MaterialTheme.typography.titleMedium,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = FrostMono,
                 color = MaterialTheme.colorScheme.onBackground
             )
 
@@ -341,7 +342,7 @@ fun RemoteInputScreen(
                     "1 Finger: Move Mouse\n2 Fingers: Scroll\nTap: Left Click\nLong Press: Right Click",
                     modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FrostMono,
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center
                 )
@@ -378,7 +379,7 @@ fun RemoteInputScreen(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     )
                 ) {
-                    Text("LEFT_CLICK", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
+                    Text("LEFT_CLICK", fontFamily = FrostMono, style = MaterialTheme.typography.labelMedium)
                 }
                 Button(
                     onClick = { },
@@ -404,7 +405,7 @@ fun RemoteInputScreen(
                         contentColor = MaterialTheme.colorScheme.onSurface
                     )
                 ) {
-                    Text("RIGHT_CLICK", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.labelMedium)
+                    Text("RIGHT_CLICK", fontFamily = FrostMono, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

@@ -41,7 +41,7 @@ fun MoreScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            
             .padding(FortisSpacing.screenPadding)
             .verticalScroll(scrollState)
     ) {
@@ -111,7 +111,7 @@ fun MoreScreen(
 
         FortisSection(title = "NOTIFICATION_MIRRORING") {
             Text("Off until you pick apps. Only the apps you tick are sent to the laptop.",
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontFamily = FrostMono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
             FortisActionButton(
                 text = "CHOOSE_APPS",

@@ -178,7 +178,7 @@ fun ControlScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            
             .padding(FortisSpacing.screenPadding)
             .verticalScroll(scrollState)
     ) {
@@ -220,14 +220,14 @@ fun ControlScreen(
                         Text(
                             "NOW_PLAYING",
                             style = MaterialTheme.typography.labelMedium,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = FrostMono,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (mediaSource.isNotEmpty()) {
                             Text(
                                 mediaSource.uppercase(),
                                 style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FrostMono,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -236,13 +236,13 @@ fun ControlScreen(
                     Text(
                         mediaTitle,
                         style = MaterialTheme.typography.titleLarge,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         mediaArtist,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
@@ -261,13 +261,13 @@ fun ControlScreen(
                             Text(
                                 formatMicroseconds(mediaPosition),
                                 style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FrostMono,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
                                 formatMicroseconds(mediaDuration),
                                 style = MaterialTheme.typography.bodySmall,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = FrostMono,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }

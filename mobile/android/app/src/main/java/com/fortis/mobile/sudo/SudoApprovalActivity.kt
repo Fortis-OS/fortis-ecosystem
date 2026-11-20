@@ -82,7 +82,7 @@ class SudoApprovalActivity : FragmentActivity() {
         LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(250) } }
         LaunchedEffect(p == null, status) { if (p == null && status == null) { delay(300); finish() } }
 
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        com.fortis.mobile.ui.components.FrostBackground {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 if (p == null) {
                     Text(status ?: "This request is no longer waiting.", style = MaterialTheme.typography.titleMedium)

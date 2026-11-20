@@ -123,7 +123,7 @@ fun DashboardScreen(
         AlertDialog(
             onDismissRequest = { showLogsDialog = false },
             title = {
-                Text("Live Backup Logs", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.titleLarge)
+                Text("Live Backup Logs", fontFamily = FrostMono, style = MaterialTheme.typography.titleLarge)
             },
             text = {
                 val scrollState = rememberScrollState()
@@ -133,13 +133,13 @@ fun DashboardScreen(
                         .verticalScroll(scrollState)
                         .fillMaxHeight(0.7f),
                     style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = FrostMono,
                     color = MaterialTheme.colorScheme.onSurface
                 )
             },
             confirmButton = {
                 TextButton(onClick = { showLogsDialog = false }) {
-                    Text("Close", fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary)
+                    Text("Close", fontFamily = FrostMono, color = MaterialTheme.colorScheme.primary)
                 }
             },
             containerColor = MaterialTheme.colorScheme.surface,
@@ -201,7 +201,7 @@ fun DashboardScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            
             .padding(FortisSpacing.screenPadding)
             .verticalScroll(scrollState)
     ) {
@@ -224,20 +224,20 @@ fun DashboardScreen(
                     Text(
                         text = activeDevice?.name ?: "Unknown",
                         style = MaterialTheme.typography.titleLarge,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = activeDevice?.ipAddress ?: "No IP",
                         style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 TextButton(onClick = onSwitchDevice) {
                     Text(
                         "SWITCH",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = FrostMono,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
