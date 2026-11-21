@@ -14,17 +14,22 @@ import java.io.File
  * can't sign requests) into the phone's Downloads (docs/api §5).
  */
 object Downloads {
-    /** Returns a short description of where the file was saved. Blocking. */
-    fun download(context: Context, remotePath: String, name: String, device: Device? = null): String {
+    /**
+     * Returns a short description of where the file was saved. Blocking.
+     * [subdir] puts it under Downloads/Fortis/<subdir> (used when downloading a whole folder).
+     */
+    fun download(context: Context, remotePath: String, name: String, device: Device? = null, subdir: String = ""): String {
         val req = FortisApiClient.buildRequest("/api/v1/files/download?path=${Uri.encode(remotePath)}", device) { get() }
         FortisApiClient.getClient().newCall(req).execute().use { r ->
             if (!r.isSuccessful) throw IllegalStateException("HTTP ${r.code}")
             val body = r.body ?: throw IllegalStateException("empty response")
             val safeName = name.substringAfterLast('/').ifBlank { "download" }
+            // "/a/b" from "a/b"; no "..", no empty parts
+            val folder = subdir.split('/').filter { it.isNotBlank() && it != "." && it != ".." }.joinToString("") { "/$it" }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, safeName)
-                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Fortis")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Fortis" + folder)
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
                 val resolver = context.contentResolver
@@ -36,10 +41,10 @@ object Downloads {
                 } catch (e: Exception) {
                     resolver.delete(uri, null, null); throw e
                 }
-                return "Downloads/Fortis/$safeName"
+                return "Downloads/Fortis$folder/$safeName"
             } else {
                 // Android 9: app-specific folder, no storage permission needed.
-                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+                val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir, folder.trimStart('/')).apply { mkdirs() }
                 val f = File(dir, safeName)
                 f.outputStream().use { out -> body.byteStream().copyTo(out) }
                 return f.absolutePath

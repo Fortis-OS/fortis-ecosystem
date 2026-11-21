@@ -49,7 +49,8 @@ data class MediaState(
     }
 }
 
-data class RemoteEntry(val name: String, val isDir: Boolean, val size: Long)
+/** [modified] is Unix seconds (0 when the laptop didn't say). */
+data class RemoteEntry(val name: String, val isDir: Boolean, val size: Long, val modified: Long = 0)
 
 /** GET /files/list: the folder the agent actually listed, directories first, then by name. */
 data class Listing(val path: String, val entries: List<RemoteEntry>) {
@@ -65,7 +66,7 @@ data class Listing(val path: String, val entries: List<RemoteEntry>) {
             val arr = o.optJSONArray("entries")
             val entries = (0 until (arr?.length() ?: 0)).map { i ->
                 val f = arr!!.getJSONObject(i)
-                RemoteEntry(f.getString("name"), f.optBoolean("is_dir"), f.optLong("size"))
+                RemoteEntry(f.getString("name"), f.optBoolean("is_dir"), f.optLong("size"), f.optLong("modified"))
             }.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
             return Listing(o.optString("path", ""), entries)
         }
@@ -168,7 +169,83 @@ object LaptopApi {
         call("/api/v1/files/drop?dest=drop", device) { post(body) }
     }
 
+    /**
+     * Downloads [remotePath] into the app's private cache (cache/open/), for opening in another app.
+     * Re-uses the cached copy when it has the same size and is newer than [modified].
+     * [onProgress] gets 0..1 when the laptop sends a length.
+     */
+    suspend fun fetchToCache(
+        context: Context,
+        remotePath: String,
+        name: String,
+        size: Long,
+        modified: Long,
+        onProgress: (Float) -> Unit = {},
+        device: Device? = null,
+    ): java.io.File = withContext(Dispatchers.IO) {
+        val dir = java.io.File(context.cacheDir, "open").apply { mkdirs() }
+        // drop copies older than a day so the cache doesn't grow forever
+        dir.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > 86_400_000 }?.forEach { it.delete() }
+        val safe = name.substringAfterLast('/').replace(Regex("[^A-Za-z0-9._ -]"), "_").ifBlank { "file" }
+        val target = java.io.File(dir, safe)
+        if (target.exists() && target.length() == size && target.lastModified() >= modified * 1000) return@withContext target
+        val req = FortisApiClient.buildRequest("/api/v1/files/download?path=${android.net.Uri.encode(remotePath)}", device) { get() }
+        FortisApiClient.getClient().newCall(req).execute().use { r ->
+            if (!r.isSuccessful) throw ApiError(r.code, errorMessage(r.code, r.body?.string().orEmpty()))
+            val body = r.body ?: throw IOException("empty response")
+            val total = body.contentLength().takeIf { it > 0 } ?: size
+            val tmp = java.io.File(dir, "$safe.part")
+            tmp.outputStream().use { out ->
+                body.byteStream().use { input ->
+                    val buf = ByteArray(64 * 1024)
+                    var got = 0L
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n == -1) break
+                        out.write(buf, 0, n)
+                        got += n
+                        if (total > 0) onProgress((got.toFloat() / total).coerceAtMost(1f))
+                    }
+                }
+            }
+            if (!tmp.renameTo(target)) { tmp.copyTo(target, overwrite = true); tmp.delete() }
+        }
+        target
+    }
+
+    /** A file inside a folder being downloaded: its path on the laptop and its folder relative to the top. */
+    data class FolderFile(val remotePath: String, val relDir: String, val entry: RemoteEntry)
+
+    class FolderTooBig(message: String) : IOException(message)
+
+    /**
+     * Every file under [path] (depth-first), for downloading a whole folder. Folders the laptop
+     * refuses are skipped and counted in [skipped]. Stops with [FolderTooBig] past [maxFiles].
+     */
+    suspend fun walkFolder(
+        path: String,
+        maxFiles: Int = 2000,
+        skipped: (String) -> Unit = {},
+        onFound: (Int) -> Unit = {},
+        device: Device? = null,
+    ): List<FolderFile> {
+        val out = mutableListOf<FolderFile>()
+        suspend fun walk(dir: String, rel: String) {
+            val listing = try { listFiles(dir, device) } catch (e: ApiError) { skipped(dir); return }
+            for (e in listing.entries) {
+                if (e.isDir) walk(listing.childPath(e), if (rel.isEmpty()) e.name else "$rel/${e.name}")
+                else {
+                    out += FolderFile(listing.childPath(e), rel, e)
+                    if (out.size > maxFiles) throw FolderTooBig("more than $maxFiles files")
+                    onFound(out.size)
+                }
+            }
+        }
+        walk(path, "")
+        return out
+    }
+
     /** Saves into the phone's Downloads/Fortis; returns where. */
-    suspend fun download(context: Context, remotePath: String, name: String, device: Device? = null): String =
-        withContext(Dispatchers.IO) { Downloads.download(context, remotePath, name, device) }
+    suspend fun download(context: Context, remotePath: String, name: String, device: Device? = null, subdir: String = ""): String =
+        withContext(Dispatchers.IO) { Downloads.download(context, remotePath, name, device, subdir) }
 }
