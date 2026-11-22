@@ -164,6 +164,12 @@ enum SessionsCmd {
 enum BackupCmd {
     /// Start a backup now
     Run,
+    /// Ask the paired phone to start backup mode (shows a notification to tap)
+    AskPhone {
+        /// How long the notification stays (seconds, 60–3600)
+        #[arg(long, default_value_t = 900)]
+        wait_secs: u64,
+    },
 }
 
 fn fmt_age(secs: i64) -> String {
@@ -554,6 +560,10 @@ fn run(cli: Cli) -> Res<()> {
         Command::Backup(BackupCmd::Run) => {
             c.call("backup_run", json!({}))?;
             println!("Backup started. Follow it with:  journalctl --user -f | grep -i backup");
+        }
+        Command::Backup(BackupCmd::AskPhone { wait_secs }) => {
+            let r = c.call("backup_ask_phone", json!({ "wait_secs": wait_secs }))?;
+            println!("Asked {} phone(s) to start backup mode.", r["phones"]);
         }
         Command::PamEnroll { .. }
         | Command::PamInstall { .. }

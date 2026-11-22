@@ -432,7 +432,7 @@ The phone side of backup is the Termux CLI in `mobile/cli/`, separate from the A
 | `fortis-mobile health` | Exit 0 if ready |
 | `fortis-mobile logs` / `version` | Session log / version |
 
-`fortis-backup` waits up to 5 minutes for `status --json` to report `ready`, pushes the snapshot, then calls `stop`. The Android app's Dashboard can start backup mode with one tap (via Termux's `RUN_COMMAND` intent), so you don't have to open Termux.
+`fortis-backup` waits up to `MOBILE_WAIT_MINUTES` (default 15) for `status --json` to report `ready`, pushes the snapshot, then calls `stop`. The Android app's Dashboard can start backup mode with one tap (via Termux's `RUN_COMMAND` intent), so you don't have to open Termux. When the phone isn't ready, `fortis-backup` runs `fortis backup ask-phone`: the agent pushes a signed `backup_request` over the events stream and the app shows a "Backup waiting" notification. Tapping it starts backup mode the same way as the button. The request is repeated every 5 minutes while the script waits, and a desktop `notify-send` is shown as well, for when the app isn't connected.
 
 ---
 

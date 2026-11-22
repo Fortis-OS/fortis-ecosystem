@@ -107,6 +107,14 @@
             android:taskAffinity=""
             android:theme="@style/Theme.FortisMobile" />
 
+        <!-- "Backup waiting" notification tap: starts Termux backup mode, no UI -->
+        <activity
+            android:name=".backup.BackupModeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <service
             android:name=".service.EventsService"
             android:exported="false"

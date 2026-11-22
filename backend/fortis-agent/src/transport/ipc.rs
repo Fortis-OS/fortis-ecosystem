@@ -336,6 +336,7 @@ async fn dispatch(
             let r = system::run_action(st, "run_backup").await?;
             Ok(json!({ "started_at": r["started_at"] }))
         }
+        "backup_ask_phone" => backup_ask_phone(st, a),
         "sessions_list" => Ok(json!(
             st.sessions
                 .active()
@@ -359,6 +360,36 @@ async fn dispatch(
             req.cmd
         ))),
     }
+}
+
+/// fortis-backup is waiting for the phone: push a signed `backup_request` so the
+/// app shows a "Backup waiting" notification (API §4). The phone only starts
+/// Termux backup mode when the user taps it; no reply comes back.
+fn backup_ask_phone(st: &Shared, a: &Value) -> Result<Value, ApiError> {
+    let wait = match a.get("wait_secs") {
+        None | Some(Value::Null) => 900,
+        Some(v) => v
+            .as_u64()
+            .filter(|s| (60..=3600).contains(s))
+            .ok_or_else(|| ApiError::bad_request("wait_secs must be 60–3600"))?,
+    };
+    let phones = st.events.online_count();
+    if phones == 0 {
+        return Err(ApiError::unavailable("no phone online"));
+    }
+    let now = fortis_core::unix_now().max(0) as u64;
+    let request_id = fortis_core::crypto::random_hex(16);
+    log::info!("backup request {request_id} sent to {phones} phone(s)");
+    st.events.publish(
+        &st.agent_key,
+        json!({
+            "type": "backup_request",
+            "request_id": request_id,
+            "issued_at": now,
+            "expires_at": now + wait,
+        }),
+    );
+    Ok(json!({ "phones": phones, "expires_at": now + wait }))
 }
 
 /// Relay a pam_fortis challenge to the phones and wait for one answer
@@ -838,6 +869,41 @@ mod tests {
         assert_eq!(reply["decision"], "approve");
         assert_eq!(reply["signature"], sig);
         assert_eq!(reply["device_id"], d.device_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn backup_ask_phone_pushes_signed_request() {
+        let t = tempfile::tempdir().unwrap();
+        let st = test_support::state(t.path(), |_| {});
+
+        // No phone online → 503, nothing sent.
+        let r = call(&st, Caller::Owner, req("backup_ask_phone", json!({}))).await;
+        assert_eq!(r.unwrap_err().message, "no phone online");
+
+        st.events.connected(uuid::Uuid::new_v4());
+        let mut events = st.events.subscribe();
+        let r = call(&st, Caller::Owner, req("backup_ask_phone", json!({ "wait_secs": 600 })))
+            .await
+            .unwrap();
+        assert_eq!(r["phones"], 1);
+
+        let frame: Value = serde_json::from_str(&events.recv().await.unwrap()).unwrap();
+        let raw = frame["msg"].as_str().unwrap();
+        assert!(st.agent_key.public().verify_b64(raw.as_bytes(), frame["agent_sig"].as_str().unwrap()));
+        let msg: Value = serde_json::from_str(raw).unwrap();
+        assert_eq!(msg["type"], "backup_request");
+        assert_eq!(msg["request_id"].as_str().unwrap().len(), 32);
+        assert_eq!(
+            msg["expires_at"].as_u64().unwrap() - msg["issued_at"].as_u64().unwrap(),
+            600
+        );
+        assert_eq!(msg["expires_at"], r["expires_at"]);
+
+        // Out-of-range wait and root callers are refused.
+        let r = call(&st, Caller::Owner, req("backup_ask_phone", json!({ "wait_secs": 5 }))).await;
+        assert_eq!(r.unwrap_err().code, "bad_request");
+        let r = call(&st, Caller::Root, req("backup_ask_phone", json!({}))).await;
+        assert_eq!(r.unwrap_err().code, "forbidden");
     }
 
     #[tokio::test]

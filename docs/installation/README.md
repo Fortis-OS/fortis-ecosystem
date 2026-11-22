@@ -249,7 +249,7 @@ ssh-keygen -t ed25519 -f ~/.ssh/fortis_mobile -N ''
 ssh-keyscan -p 8022 <phone-tailscale-ip> >> ~/.ssh/known_hosts_fortis_mobile
 ```
 
-Set `MOBILE_IP` and `MOBILE_PORT=8022` in `backup.conf`. At backup time, tap **Start backup mode** in the app's Dashboard (or run `fortis-mobile start` in Termux).
+Set `MOBILE_IP` and `MOBILE_PORT=8022` in `backup.conf`. At backup time the phone gets a **Backup waiting** notification from the Fortis app; tap it to start backup mode. You can also tap **Start backup mode** in the app's Dashboard, or run `fortis-mobile start` in Termux. The notification needs the app's connection service running (`fortis status` shows the phone **online**); the backup waits up to `MOBILE_WAIT_MINUTES` (default 15) for you.
 
 ## 12. Verify
 

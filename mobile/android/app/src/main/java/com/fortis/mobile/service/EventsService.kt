@@ -16,6 +16,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.fortis.mobile.MainActivity
 import com.fortis.mobile.R
+import com.fortis.mobile.backup.BackupRequests
 import com.fortis.mobile.data.Device
 import com.fortis.mobile.data.DeviceRepository
 import com.fortis.mobile.network.FortisApiClient
@@ -115,6 +116,7 @@ class EventsService : Service() {
             "ping" -> ws.send(JSONObject().put("type", "pong").put("t", m.optLong("t")).toString())
             "sudo_request" -> main.post { SudoRequests.show(this, laptop, m) }
             "sudo_cancelled" -> main.post { SudoRequests.cancel(this, m.optString("request_id")) }
+            "backup_request" -> main.post { BackupRequests.show(this, laptop, m) }
         }
     }
 
@@ -173,6 +175,7 @@ class EventsService : Service() {
         private const val TAG = "FortisEvents"
         const val CHANNEL_SERVICE = "fortis.connection"
         const val CHANNEL_SUDO = "fortis.sudo"
+        const val CHANNEL_BACKUP = "fortis.backup"
         private const val NOTIF_ID = 50
         private const val PREFS = "fortis_events"
 
@@ -204,6 +207,9 @@ class EventsService : Service() {
             nm.createNotificationChannel(NotificationChannel(CHANNEL_SUDO, "Sudo requests", NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "A laptop asks you to approve sudo"
                 setBypassDnd(true)
+            })
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_BACKUP, "Backup requests", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "The laptop's nightly backup is waiting for this phone"
             })
         }
     }

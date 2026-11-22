@@ -207,6 +207,11 @@ pgrep -af fortis-backup || echo "not running — safe to re-run"
 
 Termux `sshd` not running, phone asleep, or host key changed. Check `nc -z <phone-tailscale-ip> 8022` and the end of `/mnt/FortisVault/Logs/mirror/mirror.log`.
 
+No **Backup waiting** notification on the phone: the log line after "Waiting for mobile device readiness" says why.
+- `Asked 0 phone(s)` / `no phone online`: the app's connection service isn't connected. `fortis status` must show the phone **online**: open the app, set its battery mode to **Unrestricted**, allow notifications.
+- `fortis CLI not found`: install the CLI (`/usr/local/bin/fortis`).
+- Notification shown but tapping does nothing: grant Fortis Termux's **Run command** permission (the app asks on first tap) and set `allow-external-apps=true` in `~/.termux/termux.properties`.
+
 ---
 
 ## Debug commands

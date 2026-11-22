@@ -324,6 +324,7 @@ The phone opens a WebSocket (signed upgrade request). The agent sends JSON messa
 | `hello` | `agent_name`, `vault_state` | Sent on connect |
 | `sudo_request` | `request_id`, `nonce`, `issued_at`, `user`, `host`, `service`, `tty`, `expires_at` | Ask the user to approve |
 | `sudo_cancelled` | `request_id`, `reason` (`timeout` \| `answered_elsewhere` \| `pam_closed`) | Dismiss the prompt |
+| `backup_request` | `request_id`, `issued_at`, `expires_at` | `fortis-backup` is waiting for the phone. Show a notification; **tapping it** starts Termux backup mode (`fortis-mobile start`), the same as the app's button. Nothing runs without the tap. No reply is sent. A newer `backup_request` replaces the notification; it is dismissed at `expires_at` |
 | `vault_state` | `state` | Vault locked/unlocked on the laptop |
 | `ping` | `t` | Every 25 s; phone replies with `{"type":"pong","t":…}` |
 
@@ -616,6 +617,7 @@ Error codes are the same as REST.
 | `pam_devices` | `{user}` | any (UID 0 or own) | `[{device_id, name, approval_pubkey, approval_key_fp}]` |
 | `auth_request` | see below | any (UID 0 only) | see below |
 | `backup_run` | — | any | `{started_at}` |
+| `backup_ask_phone` | `{wait_secs?}` (default 900, 60–3600) | any (owner only) | `{phones, expires_at}`: pushes `backup_request` to every online paired phone; `503 unavailable` ("no phone online") if none is connected |
 | `sessions_list` | — | any | active fingerprint-confirmed sessions `[{session_id, device_id, kind, started_at}]` |
 | `sessions_end` | `{session_id?}` | any | ends one session, or all if omitted |
 | `browser_match` | `{url}` | unlocked | `{host, entries: [{id, title, username}]}` — Logins matching `url` (security §3.6); no secrets |

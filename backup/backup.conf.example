@@ -44,3 +44,6 @@ MEMORIES=(
 #   ssh-keyscan -p $MOBILE_PORT $MOBILE_IP >> ~/.ssh/known_hosts_fortis_mobile
 MOBILE_IP="100.x.x.x"
 MOBILE_PORT="8022"
+# How long the backup waits for the phone (minutes, 1–60). While waiting it asks the
+# phone every 5 minutes via `fortis backup ask-phone` (a notification to tap).
+MOBILE_WAIT_MINUTES=15

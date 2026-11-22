@@ -189,6 +189,7 @@ systemctl --user enable --now fortis-backup.timer
 - `ExecStartPre=/usr/bin/mountpoint -q /mnt/FortisVault` skips the run if the drive isn't mounted.
 - `backup.conf` is read from the script's own directory and must be owned by you and not group/world-writable.
 - Add `~/.local/share/fortis` to `SECRETS` so the (encrypted) vault is backed up.
+- Phone push: when the phone isn't ready, the script runs `fortis backup ask-phone` (a **Backup waiting** notification on the phone; tap it) every 5 minutes, plus a desktop `notify-send`, and waits up to `MOBILE_WAIT_MINUTES` (default 15) in `backup.conf`.
 
 Exit codes: `0` ok, `1` config, `2` mirror failure, `3` snapshot failure, `4` destination missing, `5` already running, `6` local ok but phone push failed.
 

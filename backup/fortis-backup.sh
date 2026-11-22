@@ -51,6 +51,7 @@ SECRETS=()
 MEMORIES=()
 MOBILE_IP=""
 MOBILE_PORT=""
+MOBILE_WAIT_MINUTES=15
 
 # shellcheck source=backup.conf
 source "$CONFIG_FILE"
@@ -543,8 +544,13 @@ if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
     SSH_CMD_STR="ssh -p $MOBILE_PORT -i $HOME/.ssh/fortis_mobile -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts_fortis_mobile -o ConnectTimeout=5"
 
     REMOTE_AVAILABLE=0
-    # 5-minute holding loop (30 attempts × 10 seconds)
-    for ((i=1; i<=30; i++)); do
+    # Holding loop: one check every 10 s for MOBILE_WAIT_MINUTES (default 15, 1–60).
+    if ! [[ "$MOBILE_WAIT_MINUTES" =~ ^[0-9]+$ ]] || (( MOBILE_WAIT_MINUTES < 1 || MOBILE_WAIT_MINUTES > 60 )); then
+        log_mirror "⚠ MOBILE_WAIT_MINUTES='$MOBILE_WAIT_MINUTES' is invalid (1–60). Using 15."
+        MOBILE_WAIT_MINUTES=15
+    fi
+    WAIT_CHECKS=$(( MOBILE_WAIT_MINUTES * 6 ))
+    for ((i=1; i<=WAIT_CHECKS; i++)); do
         # 1. Check if SSH is accessible at all
         if nc -z -w 3 "$MOBILE_IP" "$MOBILE_PORT" 2>/dev/null; then
             # Note: We must use the absolute path because non-interactive SSH does not load ~/.bashrc
@@ -572,16 +578,29 @@ if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
             fi
         fi
 
-        # On first loop, notify the user to start the session
+        # Ask the phone (Fortis app notification, via the agent) on the first check and then
+        # every 5 minutes, so a missed or swiped-away notification comes back.
+        if (( (i - 1) % 30 == 0 )); then
+            REMAINING_SECS=$(( (WAIT_CHECKS - i + 1) * 10 ))
+            (( REMAINING_SECS < 60 )) && REMAINING_SECS=60
+            if command -v fortis >/dev/null 2>&1; then
+                ASK_OUT=$(fortis backup ask-phone --wait-secs "$REMAINING_SECS" 2>&1)
+                log_mirror "Phone notification: ${ASK_OUT:-no output}"
+            else
+                log_mirror "Phone notification: fortis CLI not found, skipped."
+            fi
+        fi
+
+        # On first loop, also notify the desktop (works even when the Fortis app isn't connected)
         if [[ $i -eq 1 ]]; then
-            log_mirror "Waiting for mobile device readiness... (up to 5 minutes)"
+            log_mirror "Waiting for mobile device readiness... (up to $MOBILE_WAIT_MINUTES minutes)"
             if command -v notify-send >/dev/null 2>&1; then
                 # Fix #13: Detect display server safely
                 if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" ]]; then
                     export DISPLAY=:0
                 fi
                 notify-send -u critical "FortisVault Backup" \
-                    "Tap to start FortisMobile Backup Mode." 2>/dev/null || true
+                    "Phone backup is waiting: tap the Fortis notification on your phone (or Start backup mode in the app)." 2>/dev/null || true
             fi
         fi
         sleep 10
@@ -659,7 +678,7 @@ if [[ -n "${MOBILE_IP:-}" && -n "${MOBILE_PORT:-}" ]]; then
         ssh "${SSH_OPTS[@]}" "$MOBILE_IP" "bash /data/data/com.termux/files/home/.local/bin/fortis-mobile stop" >/dev/null 2>&1 || true
         log_mirror "Told mobile device to stop Backup Mode." 
     else
-        log_mirror "✖ Mobile device did not come online after 5 minutes. Skipping Remote Sync."
+        log_mirror "✖ Mobile device did not come online after $MOBILE_WAIT_MINUTES minutes. Skipping Remote Sync."
         REMOTE_FAILED=1
     fi
     log_mirror ""
