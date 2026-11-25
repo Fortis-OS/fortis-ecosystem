@@ -17,11 +17,6 @@
       <button id="dismissBtn" class="link">Not now</button>
     </div>
   </section>
-  <form id="unlock" class="card" hidden>
-    <label for="pw">Master password</label>
-    <input id="pw" type="password" autocomplete="off" required>
-    <button class="primary">Unlock</button>
-  </form>
   <section id="lockCard" class="card" hidden>
     <div class="q">Fortis Lock: <span id="lockSites"></span></div>
     <div class="row">
@@ -29,6 +24,12 @@
       <button id="lockSettings" class="link">Settings</button>
     </div>
   </section>
+  <form id="unlock" class="card" hidden>
+    <label for="pw">Vault master password</label>
+    <input id="pw" type="password" autocomplete="off" required>
+    <button class="primary">Unlock vault</button>
+    <div class="hint">Your Fortis vault password, not the lock password.</div>
+  </form>
   <section id="list" hidden>
     <div class="host" id="host"></div>
     <ul id="entries"></ul>

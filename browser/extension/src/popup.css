@@ -19,3 +19,4 @@ li .who { flex:1; min-width:0; }
 li .t { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 li .u { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .q { margin-bottom:4px; }
+.hint { margin-top:6px; color:var(--muted); font-size:12px; }

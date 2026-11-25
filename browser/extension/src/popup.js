@@ -78,7 +78,8 @@ async function showLock() {
   $("lockNow").disabled = !st.sites.length;
 }
 $("lockNow").onclick = async () => { await send({ op: "lock_on" }).catch(() => {}); window.close(); };
-$("lockSettings").onclick = () => { api.runtime.openOptionsPage(); window.close(); };
+// Firefox drops the request if the popup closes first: wait for it.
+$("lockSettings").onclick = async () => { await api.runtime.openOptionsPage().catch(() => {}); window.close(); };
 showLock();
 refresh(); }
   catch (e) { message(e.code === "invalid_password" ? "Wrong password." : e.code === "rate_limited" ? "Too many attempts — wait a moment." : e.message ?? "Couldn't unlock", true); }
