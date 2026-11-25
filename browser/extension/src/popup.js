@@ -69,7 +69,17 @@ async function showMatches() {
 $("unlock").onsubmit = async (ev) => {
   ev.preventDefault();
   const pw = $("pw").value; $("pw").value = "";
-  try { await send({ op: "unlock", password: pw }); await // Fortis Lock: hidden while on, so a guest doesn't see it.
+  try { await send({ op: "unlock", password: pw }); await refresh(); }
+  catch (e) { message(e.code === "invalid_password" ? "Wrong password." : e.code === "rate_limited" ? "Too many attempts — wait a moment." : e.message ?? "Couldn't unlock", true); }
+};
+$("lock").onclick = async () => { await send({ op: "lock" }).catch(() => {}); refresh(); };
+$("saveBtn").onclick = async () => {
+  try { const r = await send({ op: "save" }); message(r.action === "updated" ? "Password updated." : r.action === "created" ? "Saved to Fortis." : "Already saved."); show("save", false); showMatches(); }
+  catch (e) { message(e.message ?? "Couldn't save", true); }
+};
+$("neverBtn").onclick = async () => { await send({ op: "never" }); show("save", false); };
+$("dismissBtn").onclick = async () => { await send({ op: "dismiss" }); show("save", false); };
+// Fortis Lock: hidden while on, so a guest doesn't see it.
 async function showLock() {
   const st = await send({ op: "lock_state" }).catch(() => null);
   show("lockCard", !!st && !st.locked);
@@ -81,14 +91,4 @@ $("lockNow").onclick = async () => { await send({ op: "lock_on" }).catch(() => {
 // Firefox drops the request if the popup closes first: wait for it.
 $("lockSettings").onclick = async () => { await api.runtime.openOptionsPage().catch(() => {}); window.close(); };
 showLock();
-refresh(); }
-  catch (e) { message(e.code === "invalid_password" ? "Wrong password." : e.code === "rate_limited" ? "Too many attempts — wait a moment." : e.message ?? "Couldn't unlock", true); }
-};
-$("lock").onclick = async () => { await send({ op: "lock" }).catch(() => {}); refresh(); };
-$("saveBtn").onclick = async () => {
-  try { const r = await send({ op: "save" }); message(r.action === "updated" ? "Password updated." : r.action === "created" ? "Saved to Fortis." : "Already saved."); show("save", false); showMatches(); }
-  catch (e) { message(e.message ?? "Couldn't save", true); }
-};
-$("neverBtn").onclick = async () => { await send({ op: "never" }); show("save", false); };
-$("dismissBtn").onclick = async () => { await send({ op: "dismiss" }); show("save", false); };
 refresh();

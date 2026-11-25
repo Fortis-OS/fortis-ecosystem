@@ -86,6 +86,12 @@ async def main():
             await c.call("Page.enable", session=s)
             return t, s
 
+        # The popup's lock card and Settings (lock off, a site set).
+        _, pop = await open_tab(f"chrome-extension://{EXT}/popup.html")
+        await until(lambda: c.eval(pop, "!document.getElementById('lockCard').hidden && typeof showLock === 'function'"),
+                    "popup shows the Fortis Lock card")
+        check("fortis-test" in await c.eval(pop, "document.getElementById('lockSites').textContent"), "popup lists the sites")
+
         # Unlocked: the real page loads.
         chat_t, chat = await open_tab(SITE)
         try:
