@@ -24,6 +24,12 @@ fn ipc_command(cmd: &str) -> Option<&'static str> {
         "totp" => "browser_totp",
         "save_check" => "browser_save_check",
         "save" => "browser_save",
+        "lock_status" => "lock_status",
+        "lock_on" => "lock_on",
+        "lock_unlock" => "lock_unlock",
+        "lock_unlock_phone" => "lock_unlock_phone",
+        "lock_sites" => "lock_sites",
+        "lock_password" => "lock_password",
         _ => return None,
     })
 }
@@ -67,7 +73,9 @@ fn handle(req: &Value, sock: &PathBuf) -> Value {
 
 fn call_agent(sock: &PathBuf, cmd: &str, args: Value) -> io::Result<Value> {
     let mut s = UnixStream::connect(sock)?;
-    s.set_read_timeout(Some(Duration::from_secs(10)))?;
+    // A phone fingerprint can take up to the approval timeout (≤ 60 s).
+    let wait = if cmd == "lock_unlock_phone" { 75 } else { 10 };
+    s.set_read_timeout(Some(Duration::from_secs(wait)))?;
     s.set_write_timeout(Some(Duration::from_secs(5)))?;
     let line = json!({ "id": 1, "cmd": cmd, "args": args }).to_string();
     s.write_all(line.as_bytes())?;
@@ -87,7 +95,10 @@ fn read_frame(r: &mut impl Read) -> io::Result<Option<Vec<u8>>> {
     }
     let n = u32::from_le_bytes(len) as usize;
     if n > MAX_FRAME {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "frame too large"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "frame too large",
+        ));
     }
     let mut buf = vec![0u8; n];
     r.read_exact(&mut buf)?;
@@ -101,24 +112,74 @@ fn write_frame(w: &mut impl Write, v: &Value) -> io::Result<()> {
     w.flush()
 }
 
-fn run(input: &mut impl Read, output: &mut impl Write, sock: &PathBuf) -> io::Result<()> {
+/// Browser-lock watch (API §6): forward every `lock_watch` line from the agent as a frame
+/// until either side closes. Returns when the agent goes away.
+fn watch(output: &mut impl Write, sock: &PathBuf) -> io::Result<()> {
+    let mut s = match UnixStream::connect(sock) {
+        Ok(s) => s,
+        Err(_) => {
+            return write_frame(
+                output,
+                &error(
+                    &Value::Null,
+                    "unavailable",
+                    "The Fortis agent isn't running",
+                ),
+            );
+        }
+    };
+    s.write_all(b"{\"id\":1,\"cmd\":\"lock_watch\",\"args\":{}}\n")?;
+    let mut r = BufReader::new(s);
+    loop {
+        let mut line = String::new();
+        if (&mut r).take(MAX_FRAME as u64).read_line(&mut line)? == 0 {
+            return Ok(());
+        }
+        let Ok(mut v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if let Some(o) = v.as_object_mut() {
+            o.remove("id");
+        }
+        write_frame(output, &v)?;
+    }
+}
+
+/// Answer requests until stdin closes. Returns `true` if the extension asked to watch.
+fn run(input: &mut impl Read, output: &mut impl Write, sock: &PathBuf) -> io::Result<bool> {
     while let Some(frame) = read_frame(input)? {
         let resp = match serde_json::from_slice::<Value>(&frame) {
+            Ok(req) if req.get("cmd").and_then(Value::as_str) == Some("watch") => {
+                return Ok(true);
+            }
             Ok(req) => handle(&req, sock),
             Err(_) => error(&Value::Null, "bad_request", "invalid JSON"),
         };
         write_frame(output, &resp)?;
     }
-    Ok(())
+    Ok(false)
 }
 
 fn main() {
     // Browsers pass the extension origin / manifest path as arguments; the
     // browser itself enforces allowed_origins / allowed_extensions.
     let sock = socket_path();
-    let (mut i, mut o) = (io::stdin().lock(), io::stdout().lock());
-    if run(&mut i, &mut o, &sock).is_err() {
-        std::process::exit(1);
+    let (mut i, mut o) = (io::stdin(), io::stdout().lock());
+    match run(&mut i, &mut o, &sock) {
+        Ok(false) => {}
+        Ok(true) => {
+            // The browser closes stdin when the extension disconnects. The watch is blocked
+            // on the agent and wouldn't notice, so a reader thread exits the process.
+            std::thread::spawn(|| {
+                let mut b = [0u8; 4096];
+                while io::stdin().read(&mut b).is_ok_and(|n| n > 0) {}
+                std::process::exit(0);
+            });
+            if watch(&mut o, &sock).is_err() {
+                std::process::exit(1);
+            }
+        }
+        Err(_) => std::process::exit(1),
     }
 }
 
@@ -163,10 +224,20 @@ mod tests {
         let d = std::env::temp_dir().join(format!("fbh-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let sock = fake_agent(&d);
-        let mut input = frame(&json!({"id": 7, "cmd": "match", "args": {"url": "https://github.com/"}}));
-        input.extend(frame(&json!({"id": 8, "cmd": "fill", "args": {"id": "x", "url": "https://github.com/"}})));
-        input.extend(frame(&json!({"id": 9, "cmd": "get", "args": {"title": "Bank"}})));
-        input.extend(frame(&json!({"id": 10, "cmd": "devices_revoke", "args": {}})));
+        let mut input =
+            frame(&json!({"id": 7, "cmd": "match", "args": {"url": "https://github.com/"}}));
+        input.extend(frame(
+            &json!({"id": 8, "cmd": "fill", "args": {"id": "x", "url": "https://github.com/"}}),
+        ));
+        input.extend(frame(
+            &json!({"id": 12, "cmd": "lock_unlock", "args": {"password": "x"}}),
+        ));
+        input.extend(frame(
+            &json!({"id": 9, "cmd": "get", "args": {"title": "Bank"}}),
+        ));
+        input.extend(frame(
+            &json!({"id": 10, "cmd": "devices_revoke", "args": {}}),
+        ));
         input.extend(frame(&json!({"id": 11, "cmd": "status", "args": []})));
         let mut out = vec![];
         run(&mut input.as_slice(), &mut out, &sock).unwrap();
@@ -174,7 +245,8 @@ mod tests {
         assert_eq!(r[0]["id"], 7);
         assert_eq!(r[0]["data"]["cmd"], "browser_match");
         assert_eq!(r[1]["data"]["cmd"], "browser_fill");
-        for (i, x) in r[2..].iter().enumerate() {
+        assert_eq!(r[2]["data"]["cmd"], "lock_unlock");
+        for (i, x) in r[3..].iter().enumerate() {
             assert_eq!(x["ok"], false, "#{i}");
             assert_eq!(x["error"]["code"], "bad_request");
         }
@@ -182,18 +254,66 @@ mod tests {
     }
 
     #[test]
+    fn watch_forwards_agent_lines() {
+        let d = std::env::temp_dir().join(format!("fbh-w-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join("agent.sock");
+        let l = UnixListener::bind(&p).unwrap();
+        std::thread::spawn(move || {
+            let (s, _) = l.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(&s).read_line(&mut line).unwrap();
+            assert!(line.contains("\"lock_watch\""));
+            for locked in [false, true] {
+                let v =
+                    json!({"id": 1, "ok": true, "data": {"locked": locked, "sites": ["x.com"]}});
+                (&s).write_all(format!("{v}\n").as_bytes()).unwrap();
+            }
+        });
+        let watching = run(
+            &mut frame(&json!({"cmd": "watch"})).as_slice(),
+            &mut vec![],
+            &p,
+        )
+        .unwrap();
+        assert!(watching);
+        let mut out = vec![];
+        watch(&mut out, &p).unwrap();
+        let r = frames(&out);
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[1]["data"]["locked"], true);
+        assert!(r[1].get("id").is_none());
+        let mut out = vec![];
+        watch(&mut out, &PathBuf::from("/nonexistent/agent.sock")).unwrap();
+        assert_eq!(frames(&out)[0]["error"]["code"], "unavailable");
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
     fn agent_down_and_bad_frames() {
         let sock = PathBuf::from("/nonexistent/fortis/agent.sock");
         let mut out = vec![];
-        run(&mut frame(&json!({"id": 1, "cmd": "status"})).as_slice(), &mut out, &sock).unwrap();
+        run(
+            &mut frame(&json!({"id": 1, "cmd": "status"})).as_slice(),
+            &mut out,
+            &sock,
+        )
+        .unwrap();
         assert_eq!(frames(&out)[0]["error"]["code"], "unavailable");
 
         let mut big = ((MAX_FRAME + 1) as u32).to_le_bytes().to_vec();
         big.extend(vec![b' '; 16]);
-        assert!(run(&mut big.as_slice(), &mut vec![], &sock).is_err(), "oversized frame is refused");
+        assert!(
+            run(&mut big.as_slice(), &mut vec![], &sock).is_err(),
+            "oversized frame is refused"
+        );
 
         let mut out = vec![];
-        let junk = { let mut v = 3u32.to_le_bytes().to_vec(); v.extend(b"{x}"); v };
+        let junk = {
+            let mut v = 3u32.to_le_bytes().to_vec();
+            v.extend(b"{x}");
+            v
+        };
         run(&mut junk.as_slice(), &mut out, &sock).unwrap();
         assert_eq!(frames(&out)[0]["error"]["code"], "bad_request");
     }

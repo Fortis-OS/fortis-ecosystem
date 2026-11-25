@@ -1,6 +1,8 @@
 // Fortis browser extension — background (docs/security §7.7).
 // Talks to fortis-browser-host (native messaging). Never stores secrets on
 // disk; pending saves live in storage.session (memory) for at most 5 minutes.
+// Chromium service worker: load Fortis Lock (Firefox lists it in manifest "scripts").
+if (typeof importScripts === "function") importScripts("lock/background.js");
 const api = globalThis.browser ?? globalThis.chrome;
 const HOST = "fortis_browser_host";
 const PENDING_TTL_MS = 5 * 60 * 1000;
@@ -135,6 +137,7 @@ async function onPopup(msg, tab) {
 }
 
 api.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (typeof msg?.op === "string" && msg.op.startsWith("lock_")) return; // lock/background.js
   // Only our own pages and content scripts can message us (no externally_connectable).
   const work = sender.tab ? onSubmitted(msg, sender) : activeTab().then((t) => onPopup(msg, t));
   work.then((data) => reply({ ok: true, data }),

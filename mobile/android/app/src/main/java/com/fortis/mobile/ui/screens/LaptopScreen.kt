@@ -47,7 +47,7 @@ import com.fortis.mobile.ui.theme.FrostMono
 import com.fortis.mobile.ui.theme.FrostSans
 import kotlinx.coroutines.launch
 
-enum class LaptopPane(val label: String) { Control("Control"), Files("Files"), Health("Health"), Backup("Backup") }
+enum class LaptopPane(val label: String) { Control("Control"), Lock("Lock"), Files("Files"), Health("Health"), Backup("Backup") }
 
 /** The Laptop tab: everything about the selected laptop, one chip per area. */
 @Composable
@@ -80,6 +80,7 @@ fun LaptopScreen(
         Box(Modifier.weight(1f)) {
             when (pane) {
                 LaptopPane.Control -> ControlScreen(viewModel, onOpenRemoteInput = onOpenRemoteInput, onOpenWebcam = onOpenWebcam)
+                LaptopPane.Lock -> BrowserLockPane(viewModel)
                 LaptopPane.Files -> FilesScreen(viewModel)
                 LaptopPane.Health -> HealthPane(viewModel)
                 LaptopPane.Backup -> BackupPane(viewModel)

@@ -19,6 +19,29 @@ import java.io.InputStream
 /** The laptop answered, but not with success. [message] is the agent's own explanation when it gave one. */
 class ApiError(val code: Int, message: String) : IOException(message)
 
+/** Fortis Lock state on the laptop (API: GET /browser-lock). */
+data class BrowserLockState(
+    val locked: Boolean,
+    val sites: List<String>,
+    val hasPassword: Boolean,
+    /** Unix seconds, when locked. */
+    val lockedAt: Long?,
+) {
+    companion object {
+        fun parse(json: String): BrowserLockState = parse(JSONObject(json))
+
+        fun parse(o: JSONObject): BrowserLockState {
+            val arr = o.optJSONArray("sites")
+            return BrowserLockState(
+                locked = o.optBoolean("locked"),
+                sites = (0 until (arr?.length() ?: 0)).map { arr!!.getString(it) },
+                hasPassword = o.optBoolean("has_password"),
+                lockedAt = if (o.isNull("locked_at")) null else o.optLong("locked_at"),
+            )
+        }
+    }
+}
+
 /** GET /media. Nothing playing is a 404 from the agent and becomes `null`, not an error. */
 data class MediaState(
     val title: String,
@@ -117,6 +140,20 @@ object LaptopApi {
     suspend fun sendClipboard(text: String, device: Device? = null) {
         call("/api/v1/clipboard", device) { post(json(JSONObject().put("text", text))) }
     }
+
+    /** Fortis Lock (security §7.8): GET /browser-lock. */
+    suspend fun browserLock(device: Device? = null): BrowserLockState =
+        BrowserLockState.parse(call("/api/v1/browser-lock", device) { get() })
+
+    /** Turn the browser lock on (also locks the laptop vault). */
+    suspend fun browserLockOn(device: Device? = null): BrowserLockState =
+        BrowserLockState.parse(call("/api/v1/browser-lock/lock", device) { post(json(JSONObject())) })
+
+    /** Replace the locked sites. The agent normalises them (host only, no `www.`). */
+    suspend fun setBrowserLockSites(sites: List<String>, device: Device? = null): BrowserLockState =
+        BrowserLockState.parse(
+            call("/api/v1/browser-lock/sites", device) { put(json(JSONObject().put("sites", org.json.JSONArray(sites)))) }
+        )
 
     suspend fun backupLogs(device: Device? = null): String =
         call("/api/v1/backup/logs", device) { get() }.ifBlank { "No logs yet." }

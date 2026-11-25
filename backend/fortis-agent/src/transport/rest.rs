@@ -9,7 +9,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware::from_fn_with_state;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 
 use crate::error::ApiError;
 use crate::modules::{files, phone, system, vault};
@@ -80,7 +80,10 @@ pub fn tailnet_router(st: Shared) -> Router {
         .route("/sessions/{id}", delete(phone::session_end))
         .route("/input", get(phone::input_ws))
         .route("/webcam/start", post(phone::webcam_start))
-        .route("/webcam/stop", post(phone::webcam_stop));
+        .route("/webcam/stop", post(phone::webcam_stop))
+        .route("/browser-lock", get(phone::browser_lock_status))
+        .route("/browser-lock/lock", post(phone::browser_lock_on))
+        .route("/browser-lock/sites", put(phone::browser_lock_sites));
     Router::new()
         .nest("/api/v1", api)
         .fallback(not_found)

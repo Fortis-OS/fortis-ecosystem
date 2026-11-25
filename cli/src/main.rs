@@ -120,6 +120,9 @@ enum Command {
     /// Backups
     #[command(subcommand)]
     Backup(BackupCmd),
+    /// Hide chosen sites in the browser behind a fake certificate error (Fortis Lock)
+    #[command(subcommand, name = "browser-lock")]
+    BrowserLock(BrowserLockCmd),
     /// Allow paired phones to approve sudo (run with sudo)
     PamEnroll {
         #[arg(long, short)]
@@ -170,6 +173,129 @@ enum BackupCmd {
         #[arg(long, default_value_t = 900)]
         wait_secs: u64,
     },
+}
+
+#[derive(Subcommand)]
+enum BrowserLockCmd {
+    /// Show whether it is on and which sites it hides
+    Status,
+    /// Turn it on (also locks the vault). Bind this to a desktop shortcut.
+    On,
+    /// Turn it off with the lock password, or with --phone a fingerprint on your phone
+    Off {
+        #[arg(long)]
+        phone: bool,
+    },
+    /// Toggle: on if off; if on, ask for the password
+    Toggle,
+    /// Add sites (host names or URLs)
+    Add {
+        #[arg(required = true)]
+        sites: Vec<String>,
+    },
+    /// Remove sites
+    #[command(alias = "rm")]
+    Remove {
+        #[arg(required = true)]
+        sites: Vec<String>,
+    },
+    /// Set or change the unlock password
+    Password,
+}
+
+fn browser_lock(c: &mut Client, cmd: BrowserLockCmd) -> Res<()> {
+    let show = |s: &Value| {
+        let on = s["locked"] == true;
+        println!("Browser lock: {}", if on { "ON" } else { "off" });
+        let sites: Vec<&str> = s["sites"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        println!(
+            "Sites: {}",
+            if sites.is_empty() {
+                "(none)".into()
+            } else {
+                sites.join(", ")
+            }
+        );
+        if s["has_password"] != true {
+            println!(
+                "No unlock password yet: run `fortis browser-lock password` (phone fingerprint works either way)."
+            );
+        }
+    };
+    let off_with_password = |c: &mut Client| -> Res<Value> {
+        let p = prompt::secret("Lock password: ")?;
+        Ok(c.call("lock_unlock", json!({ "password": p.as_str() }))?)
+    };
+    match cmd {
+        BrowserLockCmd::Status => show(&c.call("lock_status", json!({}))?),
+        BrowserLockCmd::On => {
+            c.call("lock_on", json!({}))?;
+            println!("Browser lock on.");
+        }
+        BrowserLockCmd::Off { phone: true } => {
+            println!("Confirm with your fingerprint on the phone…");
+            c.set_timeout(std::time::Duration::from_secs(75))?;
+            c.call("lock_unlock_phone", json!({}))?;
+            println!("Browser lock off.");
+        }
+        BrowserLockCmd::Off { phone: false } => {
+            off_with_password(c)?;
+            println!("Browser lock off.");
+        }
+        BrowserLockCmd::Toggle => {
+            if c.call("lock_status", json!({}))?["locked"] == true {
+                off_with_password(c)?;
+                println!("Browser lock off.");
+            } else {
+                c.call("lock_on", json!({}))?;
+                println!("Browser lock on.");
+            }
+        }
+        BrowserLockCmd::Add { sites } => {
+            let cur = c.call("lock_status", json!({}))?;
+            let mut list: Vec<Value> = cur["sites"].as_array().cloned().unwrap_or_default();
+            list.extend(sites.into_iter().map(Value::from));
+            show(&c.call("lock_sites", json!({ "sites": list }))?);
+        }
+        BrowserLockCmd::Remove { sites } => {
+            let cur = c.call("lock_status", json!({}))?;
+            // Same shape the agent stores: host only, lowercase, no `www.`.
+            let host = |s: &str| {
+                let s = s.trim().to_lowercase();
+                let s = s
+                    .split_once("://")
+                    .map_or(s.as_str(), |(_, r)| r)
+                    .to_string();
+                let h = s.split(['/', ':']).next().unwrap_or("").to_string();
+                h.strip_prefix("www.").map(str::to_string).unwrap_or(h)
+            };
+            let drop: Vec<String> = sites.iter().map(|s| host(s)).collect();
+            let list: Vec<Value> = cur["sites"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|s| !s.as_str().is_some_and(|h| drop.iter().any(|d| d == h)))
+                .cloned()
+                .collect();
+            show(&c.call("lock_sites", json!({ "sites": list }))?);
+        }
+        BrowserLockCmd::Password => {
+            let has = c.call("lock_status", json!({}))?["has_password"] == true;
+            let mut args = json!({});
+            if has {
+                args["old_password"] = json!(prompt::secret("Current lock password: ")?.as_str());
+            }
+            args["password"] = json!(prompt::new_secret("New lock password: ")?.as_str());
+            c.call("lock_password", args)?;
+            println!("Lock password saved.");
+        }
+    }
+    Ok(())
 }
 
 fn fmt_age(secs: i64) -> String {
@@ -565,6 +691,7 @@ fn run(cli: Cli) -> Res<()> {
             let r = c.call("backup_ask_phone", json!({ "wait_secs": wait_secs }))?;
             println!("Asked {} phone(s) to start backup mode.", r["phones"]);
         }
+        Command::BrowserLock(cmd) => browser_lock(&mut c, cmd)?,
         Command::PamEnroll { .. }
         | Command::PamInstall { .. }
         | Command::PamTest

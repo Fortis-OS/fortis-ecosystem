@@ -17,6 +17,7 @@ use fortis_core::sign::Decision;
 
 use crate::error::{ApiError, ApiJson, ApiResult};
 use crate::hub::{SESSION_IDLE, SESSION_MAX, sign_frame};
+use crate::modules::browser_lock;
 use crate::modules::input::{self, InputEvent, MAX_EVENTS_PER_SEC};
 use crate::modules::system::webcam_available;
 use crate::state::Shared;
@@ -125,6 +126,17 @@ pub async fn session_create(
     Extension(AuthedDevice(d)): Extension<AuthedDevice>,
     ApiJson(b): ApiJson<SessionBody>,
 ) -> ApiResult<axum::Json<Value>> {
+    if b.kind == "browser_unlock" {
+        let s = st
+            .sessions
+            .create(d.device_id, &b.kind, fortis_core::unix_now().max(0) as u64);
+        return Ok(axum::Json(json!({
+            "session_id": s.id,
+            "nonce": s.nonce,
+            "issued_at": s.issued_at,
+            "expires_at": s.issued_at + crate::hub::SESSION_CONFIRM_TTL.as_secs(),
+        })));
+    }
     if b.kind != "input" {
         return Err(ApiError::bad_request("unknown session kind"));
     }
@@ -160,6 +172,14 @@ pub async fn session_confirm(
     ApiJson(b): ApiJson<ConfirmBody>,
 ) -> ApiResult<axum::Json<Value>> {
     let s = st.sessions.confirm(&id, &d, &b.signature)?;
+    if s.kind == "browser_unlock" {
+        // A fingerprint on the phone: unlock the browser now; nothing stays open.
+        st.sessions.end(&s.id);
+        let status = browser_lock::unlock(&st, &format!("fingerprint on {}", d.name))?;
+        return Ok(axum::Json(
+            json!({ "active": false, "browser_lock": status }),
+        ));
+    }
     log::info!("{} session started by {}", s.kind, d.device_id);
     util::notify(
         "Fortis",
@@ -353,4 +373,39 @@ pub async fn webcam_stop(State(st): State<Shared>) -> axum::Json<Value> {
         log::info!("webcam stream stopped");
     }
     axum::Json(json!({ "ok": true }))
+}
+
+// ---- Browser lock (security §7.8) ---------------------------------------------------------
+
+pub async fn browser_lock_status(State(st): State<Shared>) -> axum::Json<Value> {
+    axum::Json(st.browser_lock.status())
+}
+
+pub async fn browser_lock_on(
+    State(st): State<Shared>,
+    Extension(AuthedDevice(d)): Extension<AuthedDevice>,
+) -> ApiResult<axum::Json<Value>> {
+    Ok(axum::Json(browser_lock::lock_on(
+        &st,
+        &format!("phone {}", d.name),
+    )?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SitesBody {
+    sites: Value,
+}
+
+pub async fn browser_lock_sites(
+    State(st): State<Shared>,
+    Extension(AuthedDevice(d)): Extension<AuthedDevice>,
+    ApiJson(b): ApiJson<SitesBody>,
+) -> ApiResult<axum::Json<Value>> {
+    let sites = browser_lock::parse_sites(Some(&b.sites))?;
+    Ok(axum::Json(browser_lock::set_sites(
+        &st,
+        sites,
+        &format!("phone {}", d.name),
+    )?))
 }

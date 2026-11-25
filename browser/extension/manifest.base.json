@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "description": "Fill and save logins from your Fortis vault (local agent only — no cloud).",
   "icons": { "48": "icons/48.png", "128": "icons/128.png" },
+  "options_ui": { "page": "lock/options.html", "open_in_tab": true },
   "content_scripts": [{
     "matches": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
     "js": ["content.js"],
@@ -13,6 +14,10 @@
     "fill-login": {
       "suggested_key": { "default": "Ctrl+Shift+L" },
       "description": "Fill the login for this site"
+    },
+    "lock-sites": {
+      "suggested_key": { "default": "Alt+Shift+L" },
+      "description": "Fortis Lock: hide the locked sites"
     }
   }
 }

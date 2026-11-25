@@ -22,6 +22,13 @@
     <input id="pw" type="password" autocomplete="off" required>
     <button class="primary">Unlock</button>
   </form>
+  <section id="lockCard" class="card" hidden>
+    <div class="q">Fortis Lock: <span id="lockSites"></span></div>
+    <div class="row">
+      <button id="lockNow" class="primary">Lock sites</button>
+      <button id="lockSettings" class="link">Settings</button>
+    </div>
+  </section>
   <section id="list" hidden>
     <div class="host" id="host"></div>
     <ul id="entries"></ul>

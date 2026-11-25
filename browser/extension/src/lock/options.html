@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../popup.css">
+  <link rel="stylesheet" href="options.css">
+  <title>Fortis Lock</title>
+</head>
+<body>
+  <main>
+    <header><span class="logo">FORTIS LOCK</span><span id="agent" class="pill"></span></header>
+    <p id="unavailable" class="card" hidden>This page isn't available right now.</p>
+    <div id="settings" hidden>
+      <section class="card">
+        <h2>Lock</h2>
+        <p class="muted">Locked sites show your browser's "Your connection is not private" error instead of loading. Lock with
+          <kbd id="shortcut">Alt+Shift+L</kbd>, the button below, <code>fortis browser-lock on</code> or your phone.
+          To unlock, triple-click the warning icon (the fox in Firefox) and enter the password, or use your phone's fingerprint.</p>
+        <div class="row"><button id="lockNow" class="primary">Lock now</button></div>
+      </section>
+      <section class="card">
+        <h2>Sites</h2>
+        <ul id="sites"></ul>
+        <form id="addForm" class="row">
+          <input id="addSite" placeholder="web.whatsapp.com" autocomplete="off" spellcheck="false" aria-label="Site to add">
+          <button>Add</button>
+        </form>
+        <p class="muted">A site covers its subdomains: <code>google.com</code> also hides <code>mail.google.com</code>.</p>
+      </section>
+      <section class="card">
+        <h2>Unlock password</h2>
+        <p id="pwState" class="muted"></p>
+        <form id="pwForm">
+          <input id="oldPw" type="password" placeholder="Current password" autocomplete="off" hidden aria-label="Current password">
+          <input id="newPw" type="password" placeholder="New password (at least 4 characters)" autocomplete="new-password" aria-label="New password">
+          <input id="newPw2" type="password" placeholder="Repeat it" autocomplete="new-password" aria-label="Repeat new password">
+          <button class="primary">Save password</button>
+        </form>
+      </section>
+      <p id="msg" class="msg" hidden></p>
+    </div>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -28,7 +28,10 @@ data class PendingSudo(
     val requestJson: String,
     /** Local deadline, from the phone's own clock (immune to clock skew). */
     val deadlineMillis: Long,
-)
+) {
+    /** Fortis Lock asking to show the locked sites again (security §7.8), not sudo. */
+    val isBrowserUnlock: Boolean get() = service == "fortis-lock"
+}
 
 object SudoRequests {
     private const val MAX_WAIT_MS = 60_000L // auth.approval_timeout_secs is capped at 60
@@ -65,8 +68,8 @@ object SudoRequests {
         val pi = PendingIntent.getActivity(context, notifId(p.requestId), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(context, EventsService.CHANNEL_SUDO)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Approve sudo on ${p.host}?")
-            .setContentText("${p.user} · ${p.service} · ${p.tty}")
+            .setContentTitle(if (p.isBrowserUnlock) "Unlock the browser on ${p.host}?" else "Approve sudo on ${p.host}?")
+            .setContentText(if (p.isBrowserUnlock) "Fortis Lock · show the locked sites again" else "${p.user} · ${p.service} · ${p.tty}")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)

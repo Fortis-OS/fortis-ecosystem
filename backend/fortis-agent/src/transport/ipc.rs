@@ -19,7 +19,7 @@ use fortis_core::sign::ApprovalRequest;
 use fortis_core::vault::EntryInput;
 
 use crate::error::ApiError;
-use crate::modules::{system, vault};
+use crate::modules::{browser_lock, system, vault};
 use crate::state::Shared;
 use crate::util;
 
@@ -337,6 +337,19 @@ async fn dispatch(
             Ok(json!({ "started_at": r["started_at"] }))
         }
         "backup_ask_phone" => backup_ask_phone(st, a),
+        "lock_status" => Ok(st.browser_lock.status()),
+        "lock_on" => browser_lock::lock_on(st, "laptop"),
+        "lock_unlock" => browser_lock::unlock_with_password(st, a).await,
+        "lock_unlock_phone" => lock_unlock_phone(st, closed).await,
+        "lock_sites" => {
+            if st.browser_lock.is_locked() {
+                return Err(ApiError::forbidden("the browser lock is on"));
+            }
+            let sites = browser_lock::parse_sites(a.get("sites"))?;
+            browser_lock::set_sites(st, sites, "laptop")
+        }
+        "lock_password" => browser_lock::set_password(st, a).await,
+        "lock_watch" => lock_watch(st, &req.id, out, closed).await,
         "sessions_list" => Ok(json!(
             st.sessions
                 .active()
@@ -397,7 +410,7 @@ fn backup_ask_phone(st: &Shared, a: &Value) -> Result<Value, ApiError> {
 async fn auth_request(
     st: &Shared,
     a: &Value,
-    mut closed: watch::Receiver<bool>,
+    closed: watch::Receiver<bool>,
 ) -> Result<Value, ApiError> {
     let req: ApprovalRequest = from_args(a)?;
     req.validate()
@@ -406,6 +419,62 @@ async fn auth_request(
     if now.abs_diff(req.issued_at) > 30 {
         return Err(ApiError::bad_request("stale challenge"));
     }
+    let r = ask_phones(st, req, closed).await?;
+    serde_json::to_value(r).map_err(ApiError::internal)
+}
+
+/// Turn the browser lock off with a fingerprint on a paired phone (security §7.8). The
+/// phone signs the same approval bytes as for sudo; `Approvals::respond` has verified that
+/// signature against the phone's approval key before the reply reaches us.
+async fn lock_unlock_phone(st: &Shared, closed: watch::Receiver<bool>) -> Result<Value, ApiError> {
+    if !st.browser_lock.is_locked() {
+        return Ok(st.browser_lock.status());
+    }
+    let now = fortis_core::unix_now().max(0) as u64;
+    let req = ApprovalRequest::new(
+        &util::username(),
+        &st.hostname,
+        "fortis-lock",
+        "browser",
+        now,
+    );
+    let r = ask_phones(st, req, closed).await?;
+    match r.decision {
+        fortis_core::sign::Decision::Approve => {
+            browser_lock::unlock(st, &format!("fingerprint on {}", r.device_id))
+        }
+        fortis_core::sign::Decision::Deny => Err(ApiError::forbidden("denied on the phone")),
+    }
+}
+
+/// `lock_watch`: send the browser-lock state now and after every change, until the
+/// caller hangs up. Answers on the same connection with the request's `id`.
+async fn lock_watch(
+    st: &Shared,
+    id: &Value,
+    out: &mpsc::Sender<String>,
+    mut closed: watch::Receiver<bool>,
+) -> Result<Value, ApiError> {
+    let mut rx = st.browser_lock.subscribe();
+    loop {
+        let now = rx.borrow_and_update().clone();
+        if out.send(ok(id, now)).await.is_err() {
+            break;
+        }
+        tokio::select! {
+            r = rx.changed() => if r.is_err() { break },
+            _ = closed.changed() => break,
+        }
+    }
+    Err(ApiError::unavailable("watch ended"))
+}
+
+/// Push a `sudo_request` for `req` to every online phone and wait for one signed answer.
+async fn ask_phones(
+    st: &Shared,
+    req: ApprovalRequest,
+    mut closed: watch::Receiver<bool>,
+) -> Result<crate::hub::ApprovalReply, ApiError> {
     if st.events.online_count() == 0 {
         return Err(ApiError::unavailable("no phone online"));
     }
@@ -442,7 +511,7 @@ async fn auth_request(
     };
     tokio::select! {
         reply = rx => match reply {
-            Ok(r) => Ok(serde_json::to_value(r).map_err(ApiError::internal)?),
+            Ok(r) => Ok(r),
             Err(_) => Err(ApiError::unavailable("request dropped")),
         },
         _ = tokio::time::sleep(timeout) => {
@@ -809,6 +878,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn browser_lock_watch_and_phone_unlock() {
+        let t = tempfile::tempdir().unwrap();
+        let st = test_support::state(t.path(), |c| c.auth.approval_timeout_secs = 5);
+        let l = bind(&st).unwrap();
+        tokio::spawn(serve(st.clone(), l));
+
+        // A watcher gets the state at once and after every change.
+        let mut s = UnixStream::connect(st.paths.socket()).await.unwrap();
+        s.write_all(b"{\"id\":3,\"cmd\":\"lock_watch\"}\n")
+            .await
+            .unwrap();
+        let mut r = BufReader::new(s);
+        let mut next = async || {
+            let mut l = String::new();
+            r.read_line(&mut l).await.unwrap();
+            serde_json::from_str::<Value>(&l).unwrap()
+        };
+        let first = next().await;
+        assert_eq!(
+            (first["id"].clone(), first["data"]["locked"].clone()),
+            (json!(3), json!(false))
+        );
+
+        let r = call(
+            &st,
+            Caller::Owner,
+            req(
+                "lock_sites",
+                json!({"sites": ["https://web.whatsapp.com/"]}),
+            ),
+        )
+        .await
+        .unwrap();
+        assert_eq!(r["sites"], json!(["web.whatsapp.com"]));
+        assert_eq!(next().await["data"]["sites"], json!(["web.whatsapp.com"]));
+        call(&st, Caller::Owner, req("lock_on", json!({})))
+            .await
+            .unwrap();
+        assert_eq!(next().await["data"]["locked"], true);
+
+        // Locked: the laptop can't change the sites; root can't touch the lock at all.
+        let e = call(&st, Caller::Owner, req("lock_sites", json!({"sites": []})))
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, "forbidden");
+        assert!(
+            call(&st, Caller::Root, req("lock_status", json!({})))
+                .await
+                .is_err()
+        );
+
+        // Fingerprint unlock: the phone gets a fortis-lock approval request.
+        let approval = AgentKey::generate();
+        let d = Device {
+            device_id: uuid::Uuid::new_v4(),
+            name: "Phone".into(),
+            request_pubkey: AgentKey::generate().public().to_base64(),
+            approval_pubkey: approval.public().to_base64(),
+            paired_at: 0,
+            last_seen: 0,
+        };
+        st.devices.add(d.clone()).unwrap();
+        st.events.connected(d.device_id);
+        for decision in [Decision::Deny, Decision::Approve] {
+            let mut events = st.events.subscribe();
+            let st2 = st.clone();
+            let waiting = tokio::spawn(async move {
+                call(&st2, Caller::Owner, req("lock_unlock_phone", json!({}))).await
+            });
+            let msg = loop {
+                let f: Value = serde_json::from_str(&events.recv().await.unwrap()).unwrap();
+                let m: Value = serde_json::from_str(f["msg"].as_str().unwrap()).unwrap();
+                if m["type"] == "sudo_request" {
+                    break m;
+                }
+            };
+            assert_eq!(
+                (msg["service"].as_str(), msg["tty"].as_str()),
+                (Some("fortis-lock"), Some("browser"))
+            );
+            let challenge: ApprovalRequest = serde_json::from_value(json!({
+                "request_id": msg["request_id"], "nonce": msg["nonce"], "issued_at": msg["issued_at"],
+                "user": msg["user"], "host": msg["host"], "service": msg["service"], "tty": msg["tty"],
+            })).unwrap();
+            // A signature by some other key is refused and the request stays open.
+            let bad =
+                AgentKey::generate().sign_b64(&canonical_approval(&challenge, decision).unwrap());
+            assert!(
+                st.approvals
+                    .respond(&challenge.request_id, &d, decision, &bad)
+                    .is_err()
+            );
+            let sig = approval.sign_b64(&canonical_approval(&challenge, decision).unwrap());
+            st.approvals
+                .respond(&challenge.request_id, &d, decision, &sig)
+                .unwrap();
+            let res = waiting.await.unwrap();
+            if decision == Decision::Deny {
+                assert_eq!(res.unwrap_err().code, "forbidden");
+                assert!(st.browser_lock.is_locked());
+            } else {
+                assert_eq!(res.unwrap()["locked"], false);
+            }
+        }
+        assert_eq!(next().await["data"]["locked"], false);
+    }
+
+    #[tokio::test]
     async fn sudo_relay() {
         let t = tempfile::tempdir().unwrap();
         let st = test_support::state(t.path(), |c| c.auth.approval_timeout_secs = 5);
@@ -882,14 +1059,22 @@ mod tests {
 
         st.events.connected(uuid::Uuid::new_v4());
         let mut events = st.events.subscribe();
-        let r = call(&st, Caller::Owner, req("backup_ask_phone", json!({ "wait_secs": 600 })))
-            .await
-            .unwrap();
+        let r = call(
+            &st,
+            Caller::Owner,
+            req("backup_ask_phone", json!({ "wait_secs": 600 })),
+        )
+        .await
+        .unwrap();
         assert_eq!(r["phones"], 1);
 
         let frame: Value = serde_json::from_str(&events.recv().await.unwrap()).unwrap();
         let raw = frame["msg"].as_str().unwrap();
-        assert!(st.agent_key.public().verify_b64(raw.as_bytes(), frame["agent_sig"].as_str().unwrap()));
+        assert!(
+            st.agent_key
+                .public()
+                .verify_b64(raw.as_bytes(), frame["agent_sig"].as_str().unwrap())
+        );
         let msg: Value = serde_json::from_str(raw).unwrap();
         assert_eq!(msg["type"], "backup_request");
         assert_eq!(msg["request_id"].as_str().unwrap().len(), 32);
@@ -900,7 +1085,12 @@ mod tests {
         assert_eq!(msg["expires_at"], r["expires_at"]);
 
         // Out-of-range wait and root callers are refused.
-        let r = call(&st, Caller::Owner, req("backup_ask_phone", json!({ "wait_secs": 5 }))).await;
+        let r = call(
+            &st,
+            Caller::Owner,
+            req("backup_ask_phone", json!({ "wait_secs": 5 })),
+        )
+        .await;
         assert_eq!(r.unwrap_err().code, "bad_request");
         let r = call(&st, Caller::Root, req("backup_ask_phone", json!({}))).await;
         assert_eq!(r.unwrap_err().code, "forbidden");

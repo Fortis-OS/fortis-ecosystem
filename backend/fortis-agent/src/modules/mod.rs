@@ -1,4 +1,5 @@
 pub mod browser;
+pub mod browser_lock;
 pub mod files;
 pub mod input;
 pub mod phone;

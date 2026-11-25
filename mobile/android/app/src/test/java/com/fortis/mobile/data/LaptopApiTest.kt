@@ -18,6 +18,18 @@ class LaptopApiTest {
         assertTrue(m.isPlaying)
     }
 
+    @Test fun browserLockParsesAgentResponse() {
+        val s = BrowserLockState.parse("""{"locked":true,"locked_at":1731110400,"sites":["web.whatsapp.com","gmail.com"],"has_password":true}""")
+        assertTrue(s.locked)
+        assertEquals(listOf("web.whatsapp.com", "gmail.com"), s.sites)
+        assertTrue(s.hasPassword)
+        assertEquals(1731110400L, s.lockedAt)
+        val off = BrowserLockState.parse("""{"locked":false,"locked_at":null,"sites":[],"has_password":false}""")
+        assertFalse(off.locked)
+        assertNull(off.lockedAt)
+        assertTrue(off.sites.isEmpty())
+    }
+
     @Test fun mediaWithNoTitleIsNothingPlaying() =
         assertNull(MediaState.parse("""{"title":"","status":"Stopped"}"""))
 

@@ -326,6 +326,7 @@ The phone opens a WebSocket (signed upgrade request). The agent sends JSON messa
 | `sudo_cancelled` | `request_id`, `reason` (`timeout` \| `answered_elsewhere` \| `pam_closed`) | Dismiss the prompt |
 | `backup_request` | `request_id`, `issued_at`, `expires_at` | `fortis-backup` is waiting for the phone. Show a notification; **tapping it** starts Termux backup mode (`fortis-mobile start`), the same as the app's button. Nothing runs without the tap. No reply is sent. A newer `backup_request` replaces the notification; it is dismissed at `expires_at` |
 | `vault_state` | `state` | Vault locked/unlocked on the laptop |
+| `browser_lock` | `locked`, `sites` | Browser lock turned on/off or its sites changed (security §7.8) |
 | `ping` | `t` | Every 25 s; phone replies with `{"type":"pong","t":…}` |
 
 `msg` is the event **as a JSON string**, so the phone verifies the signature over exactly the bytes it received and then parses `msg`. The phone verifies `agent_sig` against the agent key it pinned at pairing and drops anything that fails.
@@ -529,6 +530,8 @@ Shown with `notify-send` (security §7.4). Rate-limited to 1/s per device (`429`
 { "kind": "input" }
 ```
 
+`kind` is `input` (remote keyboard and mouse) or `browser_unlock` (turn the browser lock off, security §7.8). A confirmed `browser_unlock` session unlocks at once and ends; its confirm reply is `{"active": false, "browser_lock": {"locked": false, …}}`.
+
 → `200`:
 
 ```json
@@ -572,6 +575,24 @@ The phone's stream is plain HTTP/1.0 with `Content-Type: video/x-motion-jpeg` an
 ### `POST /webcam/stop`
 
 → `200`. Also stops automatically after 1 hour or if the stream drops for 10 s.
+
+---
+
+### `GET /browser-lock`
+
+→ `200 {"locked": true, "locked_at": 1731110400, "sites": ["whatsapp.com"], "has_password": true}`
+
+### `POST /browser-lock/lock`
+
+Turns the browser lock on (and locks the vault). → `200` as `GET /browser-lock`. Unlocking from the phone is a `browser_unlock` session (`POST /sessions`).
+
+### `PUT /browser-lock/sites`
+
+```json
+{ "sites": ["whatsapp.com", "mail.google.com"] }
+```
+
+Replaces the list (allowed while locked). Each entry: a host name, or a URL whose host is taken; lowercased, `www.` dropped, duplicates removed; at most 100. → `200` as `GET /browser-lock`; `400` for an invalid host.
 
 ---
 
@@ -620,6 +641,13 @@ Error codes are the same as REST.
 | `backup_ask_phone` | `{wait_secs?}` (default 900, 60–3600) | any (owner only) | `{phones, expires_at}`: pushes `backup_request` to every online paired phone; `503 unavailable` ("no phone online") if none is connected |
 | `sessions_list` | — | any | active fingerprint-confirmed sessions `[{session_id, device_id, kind, started_at}]` |
 | `sessions_end` | `{session_id?}` | any | ends one session, or all if omitted |
+| `lock_status` | — | any | `{locked, locked_at, sites, has_password}` (security §7.8) |
+| `lock_on` | — | any | as `lock_status`; also locks the vault |
+| `lock_unlock` | `{password}` | locked | as `lock_status`; `401 invalid_password`, `429 rate_limited`, `409` if no password is set |
+| `lock_unlock_phone` | — | locked | asks every online phone (a `sudo_request` with `service: "fortis-lock"`) and replies once: as `lock_status` when approved; `403` denied; `503` timeout or no phone |
+| `lock_sites` | `{sites}` | not locked | as `lock_status` (same rules as `PUT /browser-lock/sites`) |
+| `lock_password` | `{password, old_password?}` | not locked | as `lock_status`; `old_password` is required when one is set. Minimum 4 characters |
+| `lock_watch` | — | any | streams `{id, ok, data: {locked, locked_at, sites, has_password}}` now and on every change, until the connection closes |
 | `browser_match` | `{url}` | unlocked | `{host, entries: [{id, title, username}]}` — Logins matching `url` (security §3.6); no secrets |
 | `browser_fill` | `{id, url}` | unlocked | `{username, password}`; `403` if the entry doesn't match `url` |
 | `browser_totp` | `{id, url}` | unlocked | `{code, remaining_secs}`; `403` if no match, `404` if no TOTP |
@@ -634,7 +662,9 @@ The browser frames each message as a 4-byte little-endian length + UTF-8 JSON (m
 { "id": 7, "cmd": "match", "args": { "url": "https://github.com/login" } }
 ```
 
-The host maps `status`, `unlock`, `lock` to the IPC commands of the same name and `match`/`fill`/`totp`/`save_check`/`save` to `browser_*`, and returns the IPC response unchanged (`{id, ok, data|error}`). Unknown `cmd` → `{ok:false, error:{code:"bad_request"}}`. Agent not running → `{ok:false, error:{code:"unavailable"}}`.
+The host maps `status`, `unlock`, `lock` to the IPC commands of the same name, `match`/`fill`/`totp`/`save_check`/`save` to `browser_*`, and `lock_status`/`lock_on`/`lock_unlock`/`lock_unlock_phone`/`lock_sites`/`lock_password` to the IPC commands of the same name, and returns the IPC response unchanged (`{id, ok, data|error}`).
+
+**Watch port:** when the extension opens a long-lived port (`connectNative`) and sends `{"cmd": "watch"}`, the host calls `lock_watch` and forwards every line as a frame (`{ok, data}`) until the agent or the browser closes the connection; then it exits and the extension reconnects. Unknown `cmd` → `{ok:false, error:{code:"bad_request"}}`. Agent not running → `{ok:false, error:{code:"unavailable"}}`.
 
 ### `auth_request` (pam_fortis only)
 
@@ -674,6 +704,6 @@ If the PAM side closes the connection first (user pressed Ctrl-C), the agent sen
 | `/devices*` | ✓ | | ✓ |
 | `/events`, `/auth/respond` | | ✓ | ✓ |
 | `/telemetry`, `/capabilities`, `/actions`, `/media`, `/clipboard`, `/files/*`, `/backup/logs`, `/tools/generate-password` | ✓ | ✓ | ✓ |
-| `/notify`, `/sessions*`, `/input`, `/webcam/*` | | ✓ | ✓ |
+| `/notify`, `/sessions*`, `/input`, `/webcam/*`, `/browser-lock*` | | ✓ | ✓ |
 
-There is no `/terminal`, `/exec` or shell endpoint (security §7.8).
+There is no `/terminal`, `/exec` or shell endpoint (security §7.9).

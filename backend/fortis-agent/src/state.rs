@@ -75,6 +75,7 @@ pub struct AppState {
     pub sessions: Sessions,
     pub tailnet_ip: RwLock<Option<Ipv4Addr>>,
     pub webcam: tokio::sync::Mutex<Option<tokio::process::Child>>,
+    pub browser_lock: crate::modules::browser_lock::BrowserLock,
     vault: Mutex<VaultSlot>,
     limiter: Mutex<UnlockLimiter>,
     nonces: Mutex<HashMap<Uuid, HashMap<String, Instant>>>,
@@ -95,6 +96,9 @@ impl AppState {
             .unwrap_or_else(|_| "laptop".into());
         Ok(Self {
             devices: DeviceStore::load(paths.devices_file())?,
+            browser_lock: crate::modules::browser_lock::BrowserLock::load(
+                paths.browser_lock_file(),
+            ),
             config,
             paths,
             token: Zeroizing::new(token),

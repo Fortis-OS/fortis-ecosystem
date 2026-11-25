@@ -500,14 +500,34 @@ Typing on the laptop is equivalent to running any command as the user, so this f
 `fortis-browser` = a WebExtension for Firefox and Chromium-based browsers + `fortis-browser-host`, a native-messaging host that forwards a fixed set of messages to the agent's IPC socket (§7.2).
 
 - **Who can talk to it:** the browser starts the host only for the extension IDs in the host manifest (`allowed_extensions` for Firefox, `allowed_origins` with the pinned `chrome-extension://<id>/` for Chromium). Web pages can't reach native messaging. The host runs as the user, so it adds no access the user's own processes don't already have through IPC.
-- **Allowed messages only:** `status`, `unlock`, `lock`, `match`, `fill`, `totp`, `save_check`, `save`. Anything else is rejected by the host. Frames are limited to 64 KiB.
+- **Allowed messages only:** `status`, `unlock`, `lock`, `match`, `fill`, `totp`, `save_check`, `save`, the browser-lock commands (§7.8) and `watch`. Anything else is rejected by the host. Frames are limited to 64 KiB.
 - **Matching is enforced by the agent**, not the extension: `browser_fill` and `browser_totp` take the page URL and return secrets only if the entry matches it (§3.6); otherwise `403`.
 - **Fill only on user action:** from the toolbar popup or the keyboard shortcut (default `Ctrl+Shift+L`). Never on page load, never into hidden fields, only in the **top-level frame**, and only into fields whose frame origin equals the URL used for matching.
 - **Save:** when a page submits a form with a password, the extension asks the agent (`browser_save_check`) whether it's new or changed and, if so, shows "Save / Update / Never for this site" in its popup (badge on the icon). The pending login is held in extension memory only, for at most 5 minutes. "Never" sites are stored in extension storage as host names only.
 - The vault can be unlocked from the popup (the master password goes popup → host → agent IPC, never to a page) and follows the agent's auto-lock.
 - The extension stores no secrets on disk.
 
-### 7.8 Not provided
+### 7.8 Browser lock (Fortis Lock)
+
+Hides chosen sites (WhatsApp Web, mail, …) when the laptop is handed to someone else with the browser open. While locked, those sites show a copy of the browser's own certificate error instead of loading. It is part of the `fortis-browser` extension (§7.7) and uses the same native host.
+
+**What it is for:** casual use of the browser by a guest. It is **not** a defence against someone who knows it is there: they can turn the extension off on the browser's extensions page, use another browser, or another browser profile. Signed-in sessions in other browsers are not covered.
+
+- **State lives in the agent**, in `browser-lock.json` (mode `0600`, next to `agent.toml`): `locked`, `locked_at`, `sites` (host names) and an optional `password` (argon2id hash, same parameters as the vault KDF, §3.4). It survives agent restarts. The laptop, the extension and the phone all read it from the agent, so they agree.
+- **Sites** are host names, lowercase, at most 100. A site matches itself and its subdomains (`whatsapp.com` covers `web.whatsapp.com`).
+- **Locking** never needs a secret: the extension shortcut (default `Alt+Shift+L`), `fortis browser-lock on` (for a desktop-wide hotkey), the popup, or the phone. Locking also **locks the vault** (§3.5), so autofill can't be used by the guest.
+- **Unlocking** needs one of:
+  - the lock password, typed on the hidden unlock form (laptop), checked by the agent. 5 wrong tries → 30 s wait, doubling up to 15 min (in memory);
+  - a fingerprint on a paired phone: either started on the laptop (the agent sends a `sudo_request` with `service: "fortis-lock"`, signed by the phone's approval key exactly as §4.4, verified by the agent), or started on the phone (fingerprint-confirmed session of kind `browser_unlock`, §5.6, that unlocks at once and ends).
+- While locked, the sites list and the password **cannot be changed from the laptop** (IPC refuses). The phone can change the sites list at any time.
+- **In the browser, while locked:**
+  - a content script is registered for the locked sites only, at `document_start`, top frame. It stops the page load (`window.stop()`) before any page script runs and draws the browser's own interstitial (Chrome, Brave or Firefox, copied from the real browser by `browser/tools/capture-error-pages`) with the page's host name filled in;
+  - a `declarativeNetRequest` rule blocks every other request to those sites (scripts, XHR, WebSockets, frames, images), so a page that somehow loaded can't reach its server and gets no messages or notifications;
+  - open tabs on those sites are reloaded into the error page when the lock starts, and reloaded again when it ends.
+- **Hidden unlock:** triple-clicking the warning icon (Chrome/Brave: the red triangle; Firefox: the fox) opens a small unlock form. Nothing on the page says it is there.
+- The extension caches `locked` and `sites` in its local storage and keeps **failing closed**: if the agent isn't reachable the last known lock stays on, and a lock pressed while the agent is down is sent to the agent when it comes back (it is never overwritten by an older "unlocked").
+
+### 7.9 Not provided
 
 There is **no remote shell / terminal** feature. Use SSH over Tailscale (`tailscale ssh` or `ssh`) instead; it has its own authentication and audit trail.
 

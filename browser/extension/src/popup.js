@@ -69,7 +69,18 @@ async function showMatches() {
 $("unlock").onsubmit = async (ev) => {
   ev.preventDefault();
   const pw = $("pw").value; $("pw").value = "";
-  try { await send({ op: "unlock", password: pw }); await refresh(); }
+  try { await send({ op: "unlock", password: pw }); await // Fortis Lock: hidden while on, so a guest doesn't see it.
+async function showLock() {
+  const st = await send({ op: "lock_state" }).catch(() => null);
+  show("lockCard", !!st && !st.locked);
+  if (!st || st.locked) return;
+  $("lockSites").textContent = st.sites.length ? st.sites.join(", ") : "no sites yet";
+  $("lockNow").disabled = !st.sites.length;
+}
+$("lockNow").onclick = async () => { await send({ op: "lock_on" }).catch(() => {}); window.close(); };
+$("lockSettings").onclick = () => { api.runtime.openOptionsPage(); window.close(); };
+showLock();
+refresh(); }
   catch (e) { message(e.code === "invalid_password" ? "Wrong password." : e.code === "rate_limited" ? "Too many attempts — wait a moment." : e.message ?? "Couldn't unlock", true); }
 };
 $("lock").onclick = async () => { await send({ op: "lock" }).catch(() => {}); refresh(); };

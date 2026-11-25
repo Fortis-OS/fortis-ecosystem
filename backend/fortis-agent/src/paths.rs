@@ -65,6 +65,9 @@ impl Paths {
     pub fn devices_file(&self) -> PathBuf {
         self.config_dir.join("paired_devices.json")
     }
+    pub fn browser_lock_file(&self) -> PathBuf {
+        self.config_dir.join("browser-lock.json")
+    }
     pub fn socket(&self) -> PathBuf {
         self.runtime_dir.join("agent.sock")
     }

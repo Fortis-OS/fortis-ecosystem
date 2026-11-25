@@ -108,14 +108,18 @@ class SudoApprovalActivity : FragmentActivity() {
                 }
                 Icon(Icons.Default.Fingerprint, null, tint = Frost.accent, modifier = Modifier.size(48.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("Approve sudo?", fontFamily = FrostSans, fontSize = 30.sp, color = Frost.text)
+                Text(if (p.isBrowserUnlock) "Unlock browser?" else "Approve sudo?", fontFamily = FrostSans, fontSize = 30.sp, color = Frost.text)
                 Text(p.laptopName, fontFamily = FrostSans, fontSize = 15.sp, color = Frost.muted)
                 Spacer(Modifier.height(20.dp))
                 FortisCard {
                     Row2("User", p.user)
                     Row2("Laptop", if (p.host == p.laptopName) p.host else "${p.host} (paired as ${p.laptopName})")
-                    Row2("Service", p.service)
-                    Row2("Terminal", p.tty)
+                    if (p.isBrowserUnlock) {
+                        Row2("Request", "Fortis Lock: show the locked sites again")
+                    } else {
+                        Row2("Service", p.service)
+                        Row2("Terminal", p.tty)
+                    }
                     val total = remember(p.requestId) { ((p.deadlineMillis - System.currentTimeMillis()) / 1000).coerceAtLeast(1) }
                     val left = ((p.deadlineMillis - now) / 1000).coerceAtLeast(0)
                     Spacer(Modifier.height(10.dp))
@@ -127,7 +131,8 @@ class SudoApprovalActivity : FragmentActivity() {
                         drawStopIndicator = {},
                     )
                     Text(
-                        "Expires in ${left}s · only approve if you just ran sudo",
+                        if (p.isBrowserUnlock) "Expires in ${left}s · only approve if you asked at the laptop"
+                        else "Expires in ${left}s · only approve if you just ran sudo",
                         fontFamily = FrostSans, fontSize = 12.sp, color = if (left <= 10) Frost.warn else Frost.muted,
                         modifier = Modifier.padding(top = 8.dp),
                     )
@@ -177,8 +182,15 @@ class SudoApprovalActivity : FragmentActivity() {
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) { busy = false; if (errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON && errorCode != BiometricPrompt.ERROR_USER_CANCELED) status = errString.toString() }
         })
         val info = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(if (decision == "approve") "Approve sudo on ${p.host}" else "Deny sudo on ${p.host}")
-            .setSubtitle("${p.user} · ${p.tty}")
+            .setTitle(
+                when {
+                    p.isBrowserUnlock && decision == "approve" -> "Unlock the browser on ${p.host}"
+                    p.isBrowserUnlock -> "Keep the browser locked"
+                    decision == "approve" -> "Approve sudo on ${p.host}"
+                    else -> "Deny sudo on ${p.host}"
+                }
+            )
+            .setSubtitle(if (p.isBrowserUnlock) "Fortis Lock" else "${p.user} · ${p.tty}")
             .setAllowedAuthenticators(BIOMETRIC_STRONG)
             .setNegativeButtonText("Cancel")
             .build()
